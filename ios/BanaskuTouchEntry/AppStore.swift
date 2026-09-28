@@ -107,6 +107,11 @@ final class AppStore: ObservableObject {
 
     var modeLabel: String { mode == .mock ? "MOCK MODE · 全操作シミュレーション" : "API MODE · サーバー接続" }
     var canChangeWorkflowContext: Bool { !isBusy && !isExporting }
+    var canIssueCredential: Bool {
+        canChangeWorkflowContext
+            && hasRequiredServiceCredentials
+            && (registration == nil || registration?.state == .cancelled)
+    }
     var canCreateRegistration: Bool { registration == nil || registration?.state == .cancelled }
     var hasRequiredServiceCredentials: Bool {
         mode == .mock || (
@@ -122,6 +127,10 @@ final class AppStore: ObservableObject {
     }
 
     func issueCredential() async {
+        guard registration == nil || registration?.state == .cancelled else {
+            alertMessage = "新しい資格情報を作る前に、既存の登録を取消してください。"
+            return
+        }
         guard canChangeWorkflowContext else {
             alertMessage = "別の処理中またはエクスポート中です。完了後にもう一度お試しください。"
             return
@@ -137,6 +146,7 @@ final class AppStore: ObservableObject {
         }) else { credentialState = .failed; return }
         credential = value
         credentialState = value.state
+        if registration?.state == .cancelled { registration = nil }
         lastAuthorization = nil
         record("資格情報の発行", result: "成功", detail: mode == .mock ? "モック参照を作成" : "サーバーの参照IDを取得。Apple Wallet/NFC発行ではありません")
     }

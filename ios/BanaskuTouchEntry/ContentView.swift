@@ -85,7 +85,7 @@ struct ContentView: View {
                     .font(.subheadline)
                 Spacer()
                 Button(store.mode == .mock ? "モック発行" : "新規参照を作成") { Task { await store.issueCredential() } }
-                    .buttonStyle(.borderedProminent).disabled(store.isBusy)
+                    .buttonStyle(.borderedProminent).disabled(!store.canIssueCredential)
             }
             if let item = store.credential {
                 Text("参照ID: …\(item.id.suffix(6))")
