@@ -235,7 +235,7 @@ struct ContentView: View {
                         Label("保存済み状態をサーバーと同期", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .disabled(store.isBusy || !store.hasRequiredServiceCredentials)
-                    Text("API操作にはBearer tokenが必須です。アプリ再起動後は前回と同じtokenを入力して適用し、保存済みIDの状態を同期してください。")
+                    Text("API操作にはBearer tokenが必須です。アプリ再起動後はtokenを認証してから、保存済みIDの状態を同期してください。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -244,9 +244,9 @@ struct ContentView: View {
                     .disabled(!store.canChangeWorkflowContext)
                 SecureField("Bearer token（APIモードで必須）", text: $store.bearerTokenDraft).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .disabled(!store.canChangeWorkflowContext)
-                Button("Bearer tokenを適用") { store.applyBearerToken() }
+                Button("Bearer tokenを適用・認証") { Task { await store.applyBearerToken() } }
                     .disabled(store.mode != .api || store.isBusy || store.isExporting || store.bearerTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("APIモードではtokenを入力して適用するまで操作できません。接続先または適用済みtokenを変更すると、前の接続の状態とログを消去します。アプリ再起動後は前回と同じtokenを入力して保存済み状態を同期してください。tokenはメモリー上だけで使い、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
+                Text("APIモードではtokenを入力して認証するまで操作できません。接続先またはtokenのアカウントが変わると前の状態とログを消去します。同じアカウントなら、アプリ再起動後も保存済みIDを同期できます。tokenはメモリー上だけで使い、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("実機連携の状態") {

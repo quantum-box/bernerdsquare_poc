@@ -145,6 +145,10 @@ final class MockBackend: CredentialProvider, LockRegistrationClient {
     }
 }
 
+private struct APIIdentityResponse: Decodable {
+    var identity: String
+}
+
 /// One isolated transport for the configurable server contract. It never logs request headers or bodies.
 @MainActor
 final class APIClient: CredentialProvider, LockRegistrationClient {
@@ -163,6 +167,12 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
     }
 
     var availability: CredentialState { .issued }
+
+    func identity() async throws -> String {
+        let response: APIIdentityResponse = try await request("GET", path: "/v1/identity")
+        guard !response.identity.isEmpty else { throw ServiceError.invalidResponse }
+        return response.identity
+    }
 
     func issue(reservationID: String?) async throws -> CredentialRecord {
         var body: [String: String] = ["request_id": UUID().uuidString, "session_id": sessionID]

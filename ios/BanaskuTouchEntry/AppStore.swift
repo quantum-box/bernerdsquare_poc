@@ -33,7 +33,9 @@ final class AppStore: ObservableObject {
             }
             if mode == .api {
                 clearWorkflowState()
-                alertMessage = "API接続先が変わったため、前の接続先の状態とログを消去しました。"
+                bearerToken = ""
+                bearerTokenDraft = ""
+                alertMessage = "API接続先が変わったため、前の接続先の状態とログを消去しました。Bearer tokenを再適用してください。"
             }
             persistSnapshot()
         }
@@ -65,6 +67,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var registration: RegistrationRecord? { didSet { persistSnapshot() } }
     @Published private(set) var lastAuthorization: AuthorizationRecord? { didSet { persistSnapshot() } }
     @Published private(set) var events: [AuditEvent] = [] { didSet { persistSnapshot() } }
+    @Published private(set) var apiIdentity: String?
     @Published var isBusy = false
     @Published var isExporting = false
     @Published var alertMessage: String?
@@ -92,6 +95,7 @@ final class AppStore: ObservableObject {
             registration = snapshot.registration
             lastAuthorization = snapshot.lastAuthorization
             events = Array(snapshot.events.suffix(200))
+            apiIdentity = snapshot.apiIdentity
             isRestoringSnapshot = false
         }
         mock.restoreState(
@@ -225,13 +229,15 @@ final class AppStore: ObservableObject {
     func restoreServerState() async {
         guard mode == .api else { alertMessage = "APIモードに切り替えてから同期してください。"; return }
         guard !bearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            alertMessage = "同期する間だけBearer tokenを入力してください。アプリはtokenを保存しません。"
+            alertMessage = "同期前に設定でBearer tokenを認証してください。アプリはtokenを端末に保存しません。"
             return
         }
         if let current = credential,
            let latest = await run(action: "資格情報状態の同期", operation: { try await self.credentialProvider.credential(id: current.id) }) {
             credential = latest
             credentialState = latest.state
+        } else if credential != nil {
+            return
         }
         if let current = reservation,
            let latest = await run(action: "予約状態の同期", operation: { try await self.registrationClient.reservation(id: current.id) }) {
@@ -239,15 +245,19 @@ final class AppStore: ObservableObject {
             startsAt = latest.startsAt
             endsAt = latest.endsAt
             gateID = latest.gateID
+        } else if reservation != nil {
+            return
         }
         if let current = registration,
            let latest = await run(action: "登録状態の同期", operation: { try await self.registrationClient.registration(id: current.id) }) {
             registration = merged(latest, with: current)
+        } else if registration != nil {
+            return
         }
         record("保存済みAPI状態の同期", result: "完了", detail: "保存済みの参照状態をサーバーから再取得")
     }
 
-    func applyBearerToken() {
+    func applyBearerToken() async {
         guard mode == .api else {
             alertMessage = "Bearer tokenを適用するにはAPIモードに切り替えてください。"
             return
@@ -261,13 +271,26 @@ final class AppStore: ObservableObject {
             alertMessage = "APIモードではBearer tokenが必須です。設定に入力してください。"
             return
         }
-        guard token != bearerToken else { return }
-        if !bearerToken.isEmpty {
-            clearWorkflowState()
-            alertMessage = "Bearer tokenが変わったため、前の会員の状態とログを消去しました。"
+        guard token != bearerToken || apiIdentity == nil else { return }
+
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let identity = try await APIClient(baseURL: baseURL, bearerToken: token, sessionID: sessionID).identity()
+            if let apiIdentity, apiIdentity != identity {
+                clearWorkflowState()
+                alertMessage = "tokenの接続先アカウントが以前と異なるため、前の状態とログを消去しました。"
+            } else if apiIdentity == nil && hasWorkflowState {
+                clearWorkflowState()
+                alertMessage = "保存済み状態の接続先を確認できなかったため、以前の状態とログを消去しました。"
+            }
+            apiIdentity = identity
+            bearerToken = token
+            bearerTokenDraft = token
+            persistSnapshot()
+        } catch {
+            alertMessage = (error as? LocalizedError)?.errorDescription ?? "API接続先を確認できませんでした。URLとBearer tokenを確認してください。"
         }
-        bearerToken = token
-        bearerTokenDraft = token
     }
 
     func fetchServerEvents() async {
@@ -277,9 +300,9 @@ final class AppStore: ObservableObject {
             AuditEvent(id: "server-\($0.id)", timestamp: $0.timestamp, action: "サーバーイベント", result: "取得済み", detail: "サーバーイベント詳細はセキュリティのため省略")
         }
         events = Array((events + additions).sorted {
-            if $0.timestamp == $1.timestamp { return $0.id < $1.id }
-            return $0.timestamp < $1.timestamp
-        }.suffix(200))
+            if $0.timestamp == $1.timestamp { return $0.id > $1.id }
+            return $0.timestamp > $1.timestamp
+        }.prefix(200))
         record("セッションログ取得", result: "成功", detail: "サーバーイベント \(additions.count) 件を追加")
     }
 
@@ -305,12 +328,17 @@ final class AppStore: ObservableObject {
 
     private func clearWorkflowState() {
         sessionID = UUID().uuidString
+        apiIdentity = nil
         credential = nil
         credentialState = .notIssued
         reservation = nil
         registration = nil
         lastAuthorization = nil
         events = []
+    }
+
+    private var hasWorkflowState: Bool {
+        credential != nil || reservation != nil || registration != nil || lastAuthorization != nil || !events.isEmpty
     }
 
     private func run<T>(action: String, operation: () async throws -> T) async -> T? {
@@ -348,6 +376,7 @@ final class AppStore: ObservableObject {
             reservation: reservation,
             registration: registration,
             lastAuthorization: lastAuthorization,
+            apiIdentity: apiIdentity,
             events: Array(events.suffix(200))
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
@@ -397,5 +426,6 @@ private struct AppSnapshot: Codable {
     var reservation: TestReservation?
     var registration: RegistrationRecord?
     var lastAuthorization: AuthorizationRecord?
+    var apiIdentity: String?
     var events: [AuditEvent]
 }

@@ -804,6 +804,20 @@ async fn authenticate(State(state): State<AppState>, mut request: Request, next:
     next.run(request).await
 }
 
+#[derive(Serialize)]
+struct IdentityResponse {
+    identity: String,
+}
+
+#[worker::send]
+async fn get_identity(
+    axum::Extension(principal): axum::Extension<Principal>,
+) -> Json<IdentityResponse> {
+    Json(IdentityResponse {
+        identity: sha256_hex(principal.owner_id.as_bytes()),
+    })
+}
+
 #[worker::send]
 async fn issue_credential(
     State(state): State<AppState>,
@@ -1498,6 +1512,7 @@ async fn list_events(
 fn app_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
+        .route("/v1/identity", get(get_identity))
         .route(
             "/v1/credentials/issue",
             axum::routing::post(issue_credential),

@@ -9,6 +9,7 @@ The API currently uses mock adapters only. It persists state in D1 and returns `
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/healthz` | Health and non-secret mock/auth configuration state |
+| GET | `/v1/identity` | Return the authenticated account's stable opaque identity |
 | POST | `/v1/credentials/issue` | Create a mock credential reference; no NFC payload is created |
 | GET | `/v1/credentials/{id}` | Read an owner-scoped credential |
 | POST | `/v1/reservations` | Create a test reservation; interval is `[starts_at, ends_at)` |
@@ -21,6 +22,8 @@ The API currently uses mock adapters only. It persists state in D1 and returns `
 | POST | `/v1/registrations/{id}/retry` | Retry a failed mock registration |
 | POST | `/v1/authorizations/check` | Simulate whether an active registration is within its reservation window |
 | GET | `/v1/events?session_id={id}` | Read sanitized owner-scoped audit events |
+
+`GET /v1/identity` requires the same Bearer authentication as other `/v1` routes and returns `200 OK` with `{"identity":"<sha256-hex>"}`. The value is SHA-256 of the authenticated server-side `owner_id`, so it is stable for the same account across token changes and does not disclose the raw owner ID. Different accounts receive different identity values except for the negligible possibility of a SHA-256 collision.
 
 Mutation bodies carry `request_id` for idempotency and may carry a `session_id` for correlation. The app also sends `X-Session-ID`; `DELETE` routes use that value for event correlation and an `Idempotency-Key` header for replay protection. A repeated key with the same request returns the stored response. Reusing it with a different body returns `409`.
 
