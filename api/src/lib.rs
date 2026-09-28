@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 12153)
+Total output lines: 1606
+
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
@@ -259,6 +262,7 @@ struct ReservationRow {
     starts_at: String,
     ends_at: String,
     status: String,
+    session_id: String,
     body_json: String,
 }
 
@@ -267,6 +271,7 @@ struct RegistrationRow {
     status: String,
     gate_applied: i64,
     updated_at: String,
+    session_id: String,
     body_json: String,
 }
 
@@ -551,6 +556,9 @@ async fn commit_mutation<T: Serialize>(
     if failure.contains("reservation_overlap") {
         return Err(ApiError::Conflict("同じゲートに重複する予約があります。"));
     }
+    if failure.contains("registration_requires_active_reservation") {
+        return Err(ApiError::Conflict("予約が取消済みのため登録を作成できません。"));
+    }
     Err(ApiError::Internal)
 }
 
@@ -603,6 +611,7 @@ fn reservation_from_row(row: ReservationRow) -> ApiResult<Reservation> {
     reservation.starts_at = row.starts_at;
     reservation.ends_at = row.ends_at;
     reservation.status = row.status;
+    reservation.session_id = row.session_id;
     Ok(reservation)
 }
 
@@ -612,6 +621,7 @@ fn registration_from_row(row: RegistrationRow) -> ApiResult<Registration> {
     registration.status = row.status;
     registration.gate_applied = row.gate_applied != 0;
     registration.updated_at = row.updated_at;
+    registration.session_id = row.session_id;
     Ok(registration)
 }
 
@@ -641,7 +651,7 @@ async fn reservation_by_id(
 ) -> ApiResult<Option<Reservation>> {
     let query = statement(
         db,
-        "SELECT gate_id, starts_at, ends_at, status, body_json \
+        "SELECT gate_id, starts_at, ends_at, status, session_id, body_json \
          FROM reservations WHERE owner_id = ?1 AND id = ?2",
         vec![text(owner_id), text(id)],
     )
@@ -661,7 +671,7 @@ async fn registration_by_id(
 ) -> ApiResult<Option<Registration>> {
     let query = statement(
         db,
-        "SELECT status, gate_applied, updated_at, body_json \
+        "SELECT status, gate_applied, updated_at, session_id, body_json \
          FROM registrations WHERE owner_id = ?1 AND id = ?2",
         vec![text(owner_id), text(id)],
     )
@@ -861,19 +871,7 @@ async fn get_credential(
 #[worker::send]
 async fn create_reservation(
     State(state): State<AppState>,
-    axum::Extension(principal): axum::Extension<Principal>,
-    Json(request): Json<CreateReservationRequest>,
-) -> ApiResult<Response> {
-    validate_request_id(&request.request_id)?;
-    if !valid_identifier(&request.gate_id) {
-        return Err(ApiError::BadRequest("gate_idの形式が正しくありません。"));
-    }
-    let session_id = session_id(&request.request_id, request.session_id.as_deref())?;
-    let starts_at = normalize_time(&request.starts_at)?;
-    let ends_at = normalize_time(&request.ends_at)?;
-    if starts_at >= ends_at {
-        return Err(ApiError::BadRequest(
-            "終了日時は開始日時より後にしてください。",
+    axum::Extension(principal): axum::…153 tokens truncated…てください。",
         ));
     }
     let request_hash = fingerprint(&request)?;
@@ -1152,7 +1150,7 @@ async fn create_registration(
 
     let duplicate = statement(
         &db,
-        "SELECT status, gate_applied, updated_at, body_json FROM registrations \
+        "SELECT status, gate_applied, updated_at, session_id, body_json FROM registrations \
          WHERE owner_id = ?1 AND credential_id = ?2 AND reservation_id = ?3 AND gate_id = ?4 \
            AND status IN ('registration_pending', 'registered', 'failed') LIMIT 1",
         vec![

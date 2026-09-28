@@ -148,7 +148,7 @@ final class AppStore: ObservableObject {
         let simulateFailure = simulateRegistrationFailure && canSimulateRegistrationFailure
         simulateRegistrationFailure = false
         guard let value = await run(action: "オンライン登録", operation: {
-            try await self.registrationClient.register(credentialID: credential.id, reservationID: reservation.id, gateID: self.gateID, simulateFailure: simulateFailure)
+            try await self.registrationClient.register(credentialID: credential.id, reservationID: reservation.id, gateID: reservation.gateID, simulateFailure: simulateFailure)
         }) else { return }
         registration = value
         lastAuthorization = nil
