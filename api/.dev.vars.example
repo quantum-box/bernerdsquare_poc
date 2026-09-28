@@ -1,0 +1,3 @@
+# Copy to .dev.vars and replace with a random, local-only token.
+API_BEARER_TOKENS_JSON={"replace-with-a-local-only-token-at-least-32-chars":"test-member-001"}
+ALLOW_TIME_SIMULATION=true
