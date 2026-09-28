@@ -1,0 +1,22 @@
+[package]
+name = "banasku-touch-entry-api"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["json", "query"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "std", "wasmbind"] }
+hex = "0.4"
+http = "1.3"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tower-service = "0.3"
+uuid = { version = "1", features = ["js", "serde", "v4"] }
+wasm-bindgen = "0.2"
+worker = { version = "0.8", features = ["d1", "http"] }

@@ -1,0 +1,37 @@
+apiVersion: apps.tachy.one/v1alpha
+kind: CloudApps
+metadata:
+  name: banasku-touch-entry
+  tenantId: tn_01kshr165k3wwr8xyk0e6vy36c
+spec:
+  apps:
+    - name: banasku-touch-entry-api
+      repository:
+        url: https://github.com/quantum-box/bernerdsquare_poc
+        owner: quantum-box
+        name: bernerdsquare_poc
+        defaultBranch: main
+      rootDirectory: api
+      framework: rust_worker
+      deploymentTarget: cloudflare_workers
+      build:
+        command: worker-build --release
+      readinessProof:
+        path: /healthz
+        expectedStatus: 200
+      worker:
+        generateConfig: true
+        main: build/worker/shim.mjs
+        compatibilityDate: "2026-09-28"
+      d1Databases:
+        - binding: DB
+          databaseName: banasku-touch-entry
+          migrationsDir: migrations
+      watchPaths:
+        - api/**
+        - tachyon.yml
+      envVars:
+        - name: MODE
+          value: mock
+        - name: ALLOW_TIME_SIMULATION
+          value: "false"

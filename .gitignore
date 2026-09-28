@@ -1,0 +1,6 @@
+.dev.vars
+.wrangler/
+target/
+DerivedData/
+*.xcuserstate
+xcuserdata/
