@@ -7,7 +7,7 @@ Reviewed 2026-09-28 against Apple Developer documentation.
 | Route | Classification | Evidence and condition |
 |---|---|---|
 | Apple Wallet contactless NFC/VAS pass | Conditional | Apple documents loyalty and membership contactless passes through Apple Pay VAS. The terminal/reader must be VAS-certified and the POS software must support VAS. No evidence yet shows that the Banasku gate reader or its controller supports this protocol. |
-| NFC & SE Platform | Conditional; best Apple-supported route to investigate for secure-element access | Japan is an eligible territory, and the documented use cases include corporate badges. The applicant must fit a use-case eligibility rule, have the required agreement with Apple, onboard in Apple Business Register, request and receive the entitlement, and use a compatible terminal. Banasku's dog-run gate use case and relationship to a qualifying badge/access operator have not been established. |
+| NFC & SE Platform | Conditional; strongest Apple-provided route to investigate for secure-element presentment | Japan is eligible. Apple lists corporate badges for office-space access and merchant loyalty/rewards as separate use cases. A dog-run entry credential is not automatically a corporate badge; the operator would need to establish that its member program fits an eligible use case and receive Apple's approval. Japan requires iPhone XS or later with iOS 18.1 or later. The app, approved entitlement/product configuration, applet partner, and terminal supporting ISO 14443-4 and ISO 7816-4 are also required. |
 | Core NFC tag reading | Not a phone-presented gate credential | Core NFC lets the iPhone read supported external tags. Reading an external FeliCa tag or its IDm does not issue a credential or make the iPhone present an arbitrary ID to the gate. |
 | `CardSession` host card emulation | Not a Japan candidate under the current public docs | Apple's `CardSession` documentation describes HCE use cases in the European Economic Area and requires eligibility and managed entitlements. Treat it as unavailable for this Japan prototype unless Apple publishes a relevant change and grants eligibility. |
 | Gate vendor mobile key / online card enrollment | Unconfirmed | No gate, controller, management-software model, API, SDK, or vendor statement has been supplied. |
@@ -20,9 +20,11 @@ Keep `CredentialProvider` and `LockRegistrationClient` behind app/API interfaces
 ## External checks needed
 
 1. Confirm the iPhone model and iOS version used for testing.
-2. Confirm whether Banasku and its access-control relationship qualify for an Apple NFC & SE Platform use case; confirm Apple agreement, ABR onboarding, entitlement, applet, and partner requirements.
+2. Ask Apple whether the Banasku membership/entry use case fits merchant loyalty/rewards or another eligible NFC & SE Platform use case. Corporate Badge access is documented for office spaces and should not be assumed to cover a dog-run gate. Confirm Apple agreement, ABR onboarding, entitlement, applet, and partner requirements.
 3. Ask the gate/reader provider whether its exact hardware supports Wallet VAS or NFC & SE ISO 14443-4 / ISO 7816-4 credentials and how those credentials are enrolled and revoked remotely.
 4. Confirm whether the existing iPhone card issuer offers a supported online enrollment and identifier retrieval API.
+
+NFC & SE Platform presentment requires an NFC reader and cannot be exercised in Simulator. A supported iPhone/iOS pair alone does not establish Apple entitlement or gate compatibility.
 
 ## Sources
 
