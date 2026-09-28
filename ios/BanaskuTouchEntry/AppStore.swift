@@ -319,7 +319,7 @@ final class AppStore: ObservableObject {
             sessionID: sessionID,
             mode: mode.rawValue,
             member: mode == .mock ? "\(member.name) (\(member.memberNumber))" : "Bearer認証会員 (会員選択はサーバー認証に影響しません)",
-            credential: credential.map { "\($0.state.label) (IDは非表示)" } ?? "未発行",
+            credential: "\(credential?.state.label ?? credentialState.label)\(credential == nil ? "" : " (IDは非表示)")",
             reservation: reservation.map { "\($0.status == "active" ? "予約済み" : "取消済み") \(Self.date($0.startsAt))–\(Self.date($0.endsAt)) (IDは非表示)" } ?? "未予約",
             registration: registration.map { $0.state.label + " (IDは非表示)" } ?? "未登録",
             events: safeEvents,

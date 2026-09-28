@@ -204,6 +204,7 @@ struct ContentView: View {
                 Button {
                     store.isExporting = true
                 } label: { Label("サニタイズ済みJSONを書き出す", systemImage: "square.and.arrow.up") }
+                    .disabled(store.isBusy || store.isExporting)
             } header: { Text("セッション") } footer: { Text("エクスポートにはトークン・資格情報ID・予約/登録ID・サーバー詳細を含めません。") }
             Section("イベント · \(store.events.count)") {
                 if store.events.isEmpty { ContentUnavailableView("ログはまだありません", systemImage: "list.bullet.rectangle", description: Text("検証操作を行うとこのセッションに記録されます。")) }
