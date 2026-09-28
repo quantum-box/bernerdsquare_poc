@@ -15,13 +15,31 @@ final class AppStore: ObservableObject {
             }
             clearWorkflowState()
             bearerToken = ""
+            bearerTokenDraft = ""
             simulateRegistrationFailure = false
             mock.restoreState(credentials: [], reservations: [], registrations: [])
             persistSnapshot()
         }
     }
-    @Published var baseURL = "https://api.example.com" { didSet { persistSnapshot() } }
-    @Published var bearerToken = ""
+    @Published var baseURL = "https://api.example.com" {
+        didSet {
+            guard !isRestoringSnapshot, baseURL != oldValue else { return }
+            guard !isBusy && !isExporting else {
+                isRestoringSnapshot = true
+                baseURL = oldValue
+                isRestoringSnapshot = false
+                alertMessage = "処理中またはエクスポート中は接続先を変更できません。"
+                return
+            }
+            if mode == .api {
+                clearWorkflowState()
+                alertMessage = "API接続先が変わったため、前の接続先の状態とログを消去しました。"
+            }
+            persistSnapshot()
+        }
+    }
+    @Published private(set) var bearerToken = ""
+    @Published var bearerTokenDraft = ""
     @Published var simulateRegistrationFailure = false
     @Published var member = TestMember.samples[0] {
         didSet {
@@ -51,7 +69,7 @@ final class AppStore: ObservableObject {
     @Published var isExporting = false
     @Published var alertMessage: String?
 
-    let sessionID: String
+    @Published private(set) var sessionID: String
     private let mock = MockBackend()
     private static let snapshotKey = "banasku-touch-entry.snapshot.v1"
     static let displayTimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
@@ -87,7 +105,10 @@ final class AppStore: ObservableObject {
     var canChangeWorkflowContext: Bool { !isBusy && !isExporting }
     var canCreateRegistration: Bool { registration == nil || registration?.state == .cancelled }
     var hasRequiredServiceCredentials: Bool {
-        mode == .mock || !bearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        mode == .mock || (
+            !bearerToken.isEmpty
+                && bearerTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines) == bearerToken
+        )
     }
     var credentialAvailability: CredentialState { mode == .mock ? mock.availability : .unavailableProvider }
     var canSimulateRegistrationFailure: Bool {
@@ -103,7 +124,8 @@ final class AppStore: ObservableObject {
         }
         credentialState = .issuing
         guard let value = await run(action: "資格情報の発行", operation: {
-            try await self.credentialProvider.issue(reservationID: self.reservation?.id)
+            let activeReservationID = self.reservation.flatMap { $0.status == "active" ? $0.id : nil }
+            return try await self.credentialProvider.issue(reservationID: activeReservationID)
         }) else { credentialState = .failed; return }
         credential = value
         credentialState = value.state
@@ -225,6 +247,29 @@ final class AppStore: ObservableObject {
         record("保存済みAPI状態の同期", result: "完了", detail: "保存済みの参照状態をサーバーから再取得")
     }
 
+    func applyBearerToken() {
+        guard mode == .api else {
+            alertMessage = "Bearer tokenを適用するにはAPIモードに切り替えてください。"
+            return
+        }
+        guard canChangeWorkflowContext else {
+            alertMessage = "処理中またはエクスポート中はBearer tokenを変更できません。"
+            return
+        }
+        let token = bearerTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            alertMessage = "APIモードではBearer tokenが必須です。設定に入力してください。"
+            return
+        }
+        guard token != bearerToken else { return }
+        if !bearerToken.isEmpty {
+            clearWorkflowState()
+            alertMessage = "Bearer tokenが変わったため、前の会員の状態とログを消去しました。"
+        }
+        bearerToken = token
+        bearerTokenDraft = token
+    }
+
     func fetchServerEvents() async {
         guard let remote = await run(action: "セッションログ取得", operation: { try await self.registrationClient.events(sessionID: self.sessionID) }) else { return }
         let existingIDs = Set(events.map(\.id))
@@ -259,6 +304,7 @@ final class AppStore: ObservableObject {
     private var registrationClient: LockRegistrationClient { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
 
     private func clearWorkflowState() {
+        sessionID = UUID().uuidString
         credential = nil
         credentialState = .notIssued
         reservation = nil
