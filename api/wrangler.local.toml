@@ -1,4 +1,4 @@
-name = "banasku-touch-entry-api"
+name = "banasku-touch-entry-local"
 main = "build/worker/shim.mjs"
 compatibility_date = "2026-09-28"
 
@@ -7,11 +7,10 @@ command = "worker-build --release"
 
 [vars]
 MODE = "mock"
-ALLOW_TIME_SIMULATION = "false"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "banasku-touch-entry"
-# Replace this local placeholder with the ID of the D1 database provisioned for this app.
+database_name = "banasku-touch-entry-local"
+# Local Wrangler uses its local D1 store; this ID is never deployed.
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"

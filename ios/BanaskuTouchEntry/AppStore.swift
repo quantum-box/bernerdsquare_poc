@@ -3,11 +3,41 @@ import SwiftUI
 
 @MainActor
 final class AppStore: ObservableObject {
-    @Published var mode: ServiceMode = .mock { didSet { persistSnapshot() } }
+    @Published var mode: ServiceMode = .mock {
+        didSet {
+            guard !isRestoringSnapshot, mode != oldValue else { return }
+            guard !isBusy && !isExporting else {
+                isRestoringSnapshot = true
+                mode = oldValue
+                isRestoringSnapshot = false
+                alertMessage = "処理中またはエクスポート中はモードを変更できません。"
+                return
+            }
+            clearWorkflowState()
+            bearerToken = ""
+            simulateRegistrationFailure = false
+            mock.restoreState(credentials: [], reservations: [], registrations: [])
+            persistSnapshot()
+        }
+    }
     @Published var baseURL = "https://api.example.com" { didSet { persistSnapshot() } }
     @Published var bearerToken = ""
     @Published var simulateRegistrationFailure = false
-    @Published var member = TestMember.samples[0] { didSet { persistSnapshot() } }
+    @Published var member = TestMember.samples[0] {
+        didSet {
+            guard !isRestoringSnapshot, mode == .mock, member != oldValue else { return }
+            guard !isBusy && !isExporting else {
+                isRestoringSnapshot = true
+                member = oldValue
+                isRestoringSnapshot = false
+                alertMessage = "処理中またはエクスポート中はテスト会員を変更できません。"
+                return
+            }
+            clearWorkflowState()
+            mock.restoreState(credentials: [], reservations: [], registrations: [])
+            persistSnapshot()
+        }
+    }
     @Published var gateID = "gate-test-01" { didSet { persistSnapshot() } }
     @Published var startsAt = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now { didSet { persistSnapshot() } }
     @Published var endsAt = Calendar.current.date(byAdding: .hour, value: 2, to: .now) ?? .now { didSet { persistSnapshot() } }
@@ -25,11 +55,13 @@ final class AppStore: ObservableObject {
     private let mock = MockBackend()
     private static let snapshotKey = "banasku-touch-entry.snapshot.v1"
     static let displayTimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+    private var isRestoringSnapshot = false
 
     init() {
         let snapshot = Self.loadSnapshot()
         sessionID = snapshot?.sessionID ?? UUID().uuidString
         if let snapshot {
+            isRestoringSnapshot = true
             mode = ServiceMode(rawValue: snapshot.mode) ?? .mock
             baseURL = snapshot.baseURL
             member = TestMember.samples.first(where: { $0.id == snapshot.memberID }) ?? TestMember.samples[0]
@@ -42,6 +74,7 @@ final class AppStore: ObservableObject {
             registration = snapshot.registration
             lastAuthorization = snapshot.lastAuthorization
             events = Array(snapshot.events.suffix(200))
+            isRestoringSnapshot = false
         }
         mock.restoreState(
             credentials: credential.map { [$0] } ?? [],
@@ -51,6 +84,7 @@ final class AppStore: ObservableObject {
     }
 
     var modeLabel: String { mode == .mock ? "MOCK MODE · 全操作シミュレーション" : "API MODE · サーバー接続" }
+    var canChangeWorkflowContext: Bool { !isBusy && !isExporting }
     var credentialAvailability: CredentialState { mode == .mock ? mock.availability : .unavailableProvider }
     var canSimulateRegistrationFailure: Bool {
         if mode == .mock { return true }
@@ -212,6 +246,15 @@ final class AppStore: ObservableObject {
 
     private var credentialProvider: CredentialProvider { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
     private var registrationClient: LockRegistrationClient { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
+
+    private func clearWorkflowState() {
+        credential = nil
+        credentialState = .notIssued
+        reservation = nil
+        registration = nil
+        lastAuthorization = nil
+        events = []
+    }
 
     private func run<T>(action: String, operation: () async throws -> T) async -> T? {
         isBusy = true

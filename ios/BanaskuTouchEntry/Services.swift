@@ -245,7 +245,9 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
               (scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1"].contains(base.host ?? ""))),
               var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { throw ServiceError.invalidConfiguration }
         let route = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/" + route
+        let prefix = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let routePath = route.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.percentEncodedPath = "/" + [prefix, routePath].filter { !$0.isEmpty }.joined(separator: "/")
         if let query = path.split(separator: "?", maxSplits: 1).dropFirst().first {
             components.percentEncodedQuery = String(query)
         }

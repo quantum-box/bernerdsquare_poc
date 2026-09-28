@@ -34,7 +34,7 @@ For a local failure/retry check, create a registration with `simulate_failure: t
 
 1. Install the Rust `wasm32-unknown-unknown` target, `worker-build`, and Wrangler.
 2. Create `api/.dev.vars` from `.dev.vars.example` and use a fresh local-only token.
-3. From `api/`, run the D1 migration locally, then start `wrangler dev`.
-4. For deployment, provision the D1 database through the approved CloudApp path, replace the placeholder database ID in `wrangler.toml`, apply the migration, and set `API_BEARER_TOKENS_JSON` as a server-side secret.
+3. From `api/`, run `wrangler d1 migrations apply banasku-touch-entry-local --local --config wrangler.local.toml`, then start `wrangler dev --config wrangler.local.toml`.
+4. The Tachyon manifest at the repository root owns the `bernard-square` CloudApp and provisions its D1 binding at build time. Add `API_BEARER_TOKENS_JSON` through `tachyon compute env set --secret` for the preview target; the secret value stays outside Git. Trigger PR #1 as a preview build to deploy the current Worker branch.
 
-No production database, secret, CloudApp app, or deployment has been configured from this repository.
+The deployed CloudApp uses the same mock adapter as local mode. It never contacts a gate or confirms a physical unlock.

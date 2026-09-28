@@ -59,7 +59,11 @@ struct ContentView: View {
             }
             .pickerStyle(.menu)
             .accessibilityLabel("テスト会員を選択")
-            .disabled(store.mode == .api)
+            .disabled(store.mode == .api || !store.canChangeWorkflowContext)
+            if store.mode == .mock {
+                Text("会員を変更すると、この会員の資格情報・予約・登録・認可結果・ログを消去します。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if store.mode == .api {
                 Text("APIモードの会員はBearer tokenでサーバー側が決定します。この選択は認証先に影響しません。")
                     .font(.caption).foregroundStyle(.secondary)
@@ -216,7 +220,10 @@ struct ContentView: View {
                 Picker("モード", selection: $store.mode) {
                     ForEach(ServiceMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
                 }.pickerStyle(.segmented)
-                Text(store.mode == .mock ? "すべてローカルの模擬データです。" : "設定したサーバーへBearer認証で接続します。APIが返す資格情報IDは参照情報で、Apple資格情報ではありません。")
+                    .disabled(!store.canChangeWorkflowContext)
+                Text(store.mode == .mock
+                     ? "すべてローカルの模擬データです。モードを切り替えると資格情報・予約・登録・認可結果・ログを消去します。"
+                     : "設定したサーバーへBearer認証で接続します。モードを切り替えると保存済みの資格情報・予約・登録・認可結果・ログと入力中のtokenを消去します。APIが返す資格情報IDは参照情報で、Apple資格情報ではありません。")
                     .font(.footnote).foregroundStyle(.secondary)
                 if store.mode == .api {
                     Button { Task { await store.restoreServerState() } } label: {
