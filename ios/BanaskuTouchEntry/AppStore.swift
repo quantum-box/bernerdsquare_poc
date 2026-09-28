@@ -86,6 +86,9 @@ final class AppStore: ObservableObject {
     var modeLabel: String { mode == .mock ? "MOCK MODE · 全操作シミュレーション" : "API MODE · サーバー接続" }
     var canChangeWorkflowContext: Bool { !isBusy && !isExporting }
     var canCreateRegistration: Bool { registration == nil || registration?.state == .cancelled }
+    var hasRequiredServiceCredentials: Bool {
+        mode == .mock || !bearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     var credentialAvailability: CredentialState { mode == .mock ? mock.availability : .unavailableProvider }
     var canSimulateRegistrationFailure: Bool {
         if mode == .mock { return true }
@@ -94,6 +97,10 @@ final class AppStore: ObservableObject {
     }
 
     func issueCredential() async {
+        guard hasRequiredServiceCredentials else {
+            alertMessage = "APIモードではBearer tokenが必須です。設定に入力してください。"
+            return
+        }
         credentialState = .issuing
         guard let value = await run(action: "資格情報の発行", operation: {
             try await self.credentialProvider.issue(reservationID: self.reservation?.id)
@@ -261,6 +268,10 @@ final class AppStore: ObservableObject {
     }
 
     private func run<T>(action: String, operation: () async throws -> T) async -> T? {
+        guard hasRequiredServiceCredentials else {
+            alertMessage = "APIモードではBearer tokenが必須です。設定に入力してください。"
+            return nil
+        }
         isBusy = true
         defer { isBusy = false }
         do { return try await operation() }

@@ -556,6 +556,9 @@ async fn commit_mutation<T: Serialize>(
     if failure.contains("registration_requires_active_reservation") {
         return Err(ApiError::Conflict("予約が取消済みのため登録を作成できません。"));
     }
+    if failure.contains("registration_retry_requires_failed") {
+        return Err(ApiError::Conflict("失敗状態の登録のみ再試行できます。"));
+    }
     if failure.contains("credential_requires_active_reservation") {
         return Err(ApiError::Conflict("予約が取消済みのため資格情報を発行できません。"));
     }
@@ -1288,7 +1291,7 @@ async fn retry_registration(
     let update = statement(
         &db,
         "UPDATE registrations SET status = ?1, gate_applied = ?2, updated_at = ?3, session_id = ?4 \
-         WHERE owner_id = ?5 AND id = ?6 AND status = 'failed'",
+         WHERE owner_id = ?5 AND id = ?6",
         vec![
             text(&registration.status),
             integer(i64::from(registration.gate_applied)),

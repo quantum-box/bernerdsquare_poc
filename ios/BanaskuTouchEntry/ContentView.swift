@@ -22,10 +22,13 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 16) {
                 modeBanner
-                memberCard
-                credentialCard
-                reservationCard
-                registrationCard
+                Group {
+                    memberCard
+                    credentialCard
+                    reservationCard
+                    registrationCard
+                }
+                .disabled(!store.hasRequiredServiceCredentials)
                 disclaimer
             }
             .padding(16)
@@ -41,14 +44,16 @@ struct ContentView: View {
                 .font(.title2).foregroundStyle(.white)
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.modeLabel).font(.caption.bold())
-                Text(store.mode == .mock ? "画面上の模擬操作です" : "設定したAPIへリクエストします")
+                Text(store.mode == .mock
+                     ? "画面上の模擬操作です"
+                     : (store.hasRequiredServiceCredentials ? "設定したAPIへリクエストします" : "Bearer token必須 · 設定で入力してください"))
                     .font(.caption).opacity(0.9)
             }
             Spacer(minLength: 0)
         }
         .foregroundStyle(.white)
         .padding(16)
-        .background(store.mode == .mock ? Color.orange : Color.blue, in: RoundedRectangle(cornerRadius: 16))
+        .background(store.mode == .mock || !store.hasRequiredServiceCredentials ? Color.orange : Color.blue, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var memberCard: some View {
@@ -195,7 +200,7 @@ struct ContentView: View {
                 LabeledContent("セッションID", value: String(store.sessionID.prefix(8)))
                 LabeledContent("モード", value: store.mode.rawValue)
                 Button { Task { await store.fetchServerEvents() } } label: { Label("APIイベントを取得", systemImage: "arrow.down.doc") }
-                    .disabled(store.isBusy || store.mode == .mock)
+                    .disabled(store.isBusy || store.mode == .mock || !store.hasRequiredServiceCredentials)
                 Button {
                     store.isExporting = true
                 } label: { Label("サニタイズ済みJSONを書き出す", systemImage: "square.and.arrow.up") }
@@ -229,15 +234,15 @@ struct ContentView: View {
                     Button { Task { await store.restoreServerState() } } label: {
                         Label("保存済み状態をサーバーと同期", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .disabled(store.isBusy)
-                    Text("アプリ再起動後はtokenを入力してこの操作を実行すると、保存済みIDの状態を再取得します。")
+                    .disabled(store.isBusy || !store.hasRequiredServiceCredentials)
+                    Text("API操作にはBearer tokenが必須です。アプリ再起動後はtokenを入力して同期すると、保存済みIDの状態を再取得します。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("API設定") {
                 TextField("ベースURL", text: $store.baseURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                SecureField("Bearer token (任意)", text: $store.bearerToken).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Text("トークンはこの画面を開いている間だけメモリー上で使用し、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
+                SecureField("Bearer token（APIモードで必須）", text: $store.bearerToken).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Text("APIモードではtokenを入力するまで操作できません。tokenはこの画面を開いている間だけメモリー上で使用し、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("実機連携の状態") {
