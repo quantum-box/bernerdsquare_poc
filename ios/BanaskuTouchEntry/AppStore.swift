@@ -85,6 +85,7 @@ final class AppStore: ObservableObject {
 
     var modeLabel: String { mode == .mock ? "MOCK MODE · 全操作シミュレーション" : "API MODE · サーバー接続" }
     var canChangeWorkflowContext: Bool { !isBusy && !isExporting }
+    var canCreateRegistration: Bool { registration == nil || registration?.state == .cancelled }
     var credentialAvailability: CredentialState { mode == .mock ? mock.availability : .unavailableProvider }
     var canSimulateRegistrationFailure: Bool {
         if mode == .mock { return true }

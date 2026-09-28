@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 12153)
-Total output lines: 1606
-
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
@@ -559,6 +556,9 @@ async fn commit_mutation<T: Serialize>(
     if failure.contains("registration_requires_active_reservation") {
         return Err(ApiError::Conflict("予約が取消済みのため登録を作成できません。"));
     }
+    if failure.contains("credential_requires_active_reservation") {
+        return Err(ApiError::Conflict("予約が取消済みのため資格情報を発行できません。"));
+    }
     Err(ApiError::Internal)
 }
 
@@ -871,7 +871,19 @@ async fn get_credential(
 #[worker::send]
 async fn create_reservation(
     State(state): State<AppState>,
-    axum::Extension(principal): axum::…153 tokens truncated…てください。",
+    axum::Extension(principal): axum::Extension<Principal>,
+    Json(request): Json<CreateReservationRequest>,
+) -> ApiResult<Response> {
+    validate_request_id(&request.request_id)?;
+    if !valid_identifier(&request.gate_id) {
+        return Err(ApiError::BadRequest("gate_idの形式が正しくありません。"));
+    }
+    let session_id = session_id(&request.request_id, request.session_id.as_deref())?;
+    let starts_at = normalize_time(&request.starts_at)?;
+    let ends_at = normalize_time(&request.ends_at)?;
+    if starts_at >= ends_at {
+        return Err(ApiError::BadRequest(
+            "終了日時は開始日時より後にしてください。",
         ));
     }
     let request_hash = fingerprint(&request)?;
@@ -1055,10 +1067,10 @@ async fn cancel_reservation(
     .map_err(|_| ApiError::Internal)?;
     let revoke_registrations = statement(
         &db,
-        "UPDATE registrations SET status = 'revoked', gate_applied = 0, updated_at = ?1 \
-         WHERE owner_id = ?2 AND reservation_id = ?3 \
-           AND status IN ('registration_pending', 'registered', 'revocation_pending')",
-        vec![text(now_iso()), text(&principal.owner_id), text(&id)],
+        "UPDATE registrations SET status = 'revoked', gate_applied = 0, updated_at = ?1, session_id = ?2 \
+         WHERE owner_id = ?3 AND reservation_id = ?4 \
+           AND status IN ('registration_pending', 'registered', 'revocation_pending', 'failed')",
+        vec![text(now_iso()), text(&session_id), text(&principal.owner_id), text(&id)],
     )
     .map_err(|_| ApiError::Internal)?;
     let revoke_credentials = statement(
@@ -1460,14 +1472,15 @@ async fn list_events(
         &db,
         "SELECT id, session_id, action, result, detail, mode, occurred_at AS created_at \
          FROM audit_events WHERE owner_id = ?1 AND session_id = ?2 \
-         ORDER BY occurred_at ASC LIMIT 500",
+         ORDER BY occurred_at DESC, id DESC LIMIT 500",
         vec![text(&principal.owner_id), text(&query.session_id)],
     )
     .map_err(|_| ApiError::Internal)?;
     let results = statement.all().await.map_err(|_| ApiError::Internal)?;
-    let events = results
+    let mut events = results
         .results::<AuditEvent>()
         .map_err(|_| ApiError::Internal)?;
+    events.reverse();
     Ok(Json(EventEnvelope { events }))
 }
 

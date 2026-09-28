@@ -134,7 +134,7 @@ struct ContentView: View {
             statusRow("登録状態", value: store.registration?.state.label ?? "未登録", color: store.registration?.state == .registered ? .green : .secondary)
             HStack {
                 Button { Task { await store.register() } } label: { Label("登録", systemImage: "arrow.up.circle.fill").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent).disabled(store.isBusy || store.credential?.state != .issued || store.reservation?.status != "active" || store.registration?.state == .registered)
+                    .buttonStyle(.borderedProminent).disabled(store.isBusy || store.credential?.state != .issued || store.reservation?.status != "active" || !store.canCreateRegistration)
                 Button { Task { await store.refreshRegistration() } } label: { Label("状態取得", systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered).disabled(store.isBusy || store.registration == nil)
             }
