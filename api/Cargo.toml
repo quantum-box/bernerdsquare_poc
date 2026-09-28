@@ -8,7 +8,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["json"] }
+axum = { version = "0.8", default-features = false, features = ["json", "query"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "std", "wasmbind"] }
 hex = "0.4"
 http = "1.3"
