@@ -559,6 +559,14 @@ async fn commit_mutation<T: Serialize>(
     if failure.contains("credential_requires_active_reservation") {
         return Err(ApiError::Conflict("予約が取消済みのため資格情報を発行できません。"));
     }
+    if failure.contains("reservation_update_requires_active") {
+        return Err(ApiError::Conflict("取消済み予約は変更できません。"));
+    }
+    if failure.contains("registration_already_exists") {
+        return Err(ApiError::Conflict(
+            "同じ資格情報と予約の登録がすでに存在します。状態取得または失敗時の再試行を行ってください。",
+        ));
+    }
     Err(ApiError::Internal)
 }
 
@@ -993,7 +1001,7 @@ async fn update_reservation(
     let update = statement(
         &db,
         "UPDATE reservations SET starts_at = ?1, ends_at = ?2, session_id = ?3, body_json = ?4 \
-         WHERE owner_id = ?5 AND id = ?6 AND status = 'active'",
+         WHERE owner_id = ?5 AND id = ?6",
         vec![
             text(starts_at),
             text(ends_at),

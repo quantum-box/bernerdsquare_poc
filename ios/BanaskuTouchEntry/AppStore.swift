@@ -224,7 +224,10 @@ final class AppStore: ObservableObject {
         let additions = remote.filter { !existingIDs.contains("server-\($0.id)") }.map {
             AuditEvent(id: "server-\($0.id)", timestamp: $0.timestamp, action: "サーバーイベント", result: "取得済み", detail: "サーバーイベント詳細はセキュリティのため省略")
         }
-        events.append(contentsOf: additions)
+        events = Array((events + additions).sorted {
+            if $0.timestamp == $1.timestamp { return $0.id < $1.id }
+            return $0.timestamp < $1.timestamp
+        }.suffix(200))
         record("セッションログ取得", result: "成功", detail: "サーバーイベント \(additions.count) 件を追加")
     }
 
