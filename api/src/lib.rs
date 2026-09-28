@@ -14,7 +14,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower_service::Service;
 use wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Result as WorkerResult};
+use worker::{event, Context, D1Database, Env, Result as WorkerResult};
 
 #[derive(Clone)]
 struct AppState {
