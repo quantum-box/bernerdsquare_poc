@@ -17,7 +17,7 @@ use const_oid::ObjectIdentifier;
 use der::{
     asn1::{
         Any, AnyRef, GeneralizedTime, Ia5StringRef, OctetString, PrintableStringRef, SetOfVec,
-        Utf8StringRef,
+        UtcTime, Utf8StringRef,
     },
     Decode, Encode,
 };
@@ -268,9 +268,7 @@ fn build_signed_attributes(manifest: &[u8]) -> Result<SignedAttributes, ()> {
     let digest = Sha1::digest(manifest);
     let digest_value =
         Any::encode_from(&OctetString::new(digest.to_vec()).map_err(|_| ())?).map_err(|_| ())?;
-    let signing_time =
-        GeneralizedTime::from_system_time(current_signing_time()?).map_err(|_| ())?;
-    let signing_time_value = Any::encode_from(&signing_time).map_err(|_| ())?;
+    let signing_time_value = encode_signing_time(current_signing_time()?)?;
 
     SignedAttributes::try_from(vec![
         Attribute {
@@ -305,6 +303,15 @@ fn current_signing_time() -> Result<SystemTime, ()> {
     {
         Ok(SystemTime::now())
     }
+}
+
+fn encode_signing_time(time: SystemTime) -> Result<Any, ()> {
+    if let Ok(utc_time) = UtcTime::from_system_time(time) {
+        return Any::encode_from(&utc_time).map_err(|_| ());
+    }
+
+    let generalized_time = GeneralizedTime::from_system_time(time).map_err(|_| ())?;
+    Any::encode_from(&generalized_time).map_err(|_| ())
 }
 
 fn prepare_manifest_signature(manifest: &[u8]) -> Result<(SignedAttributes, Vec<u8>), ()> {
@@ -844,10 +851,10 @@ mod tests {
             .find(|attribute| attribute.oid == ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5"))
             .expect("CMS signature includes the signing-time attribute");
         assert_eq!(signing_time_attribute.values.len(), 1);
+        let signing_time_value = AnyRef::from(signing_time_attribute.values.iter().next().unwrap());
         assert!(
-            AnyRef::from(signing_time_attribute.values.iter().next().unwrap())
-                .decode_as::<GeneralizedTime>()
-                .is_ok()
+            signing_time_value.decode_as::<der::asn1::UtcTime>().is_ok()
+                || signing_time_value.decode_as::<GeneralizedTime>().is_ok()
         );
         let message_digest = embedded_attributes
             .iter()
@@ -926,5 +933,24 @@ mod tests {
             "OTHERTEAM1"
         ));
         assert!(is_apple_wwdr_g4(&wwdr_certificate));
+    }
+
+    #[test]
+    fn cms_signing_time_uses_utc_time_through_2049_and_generalized_time_afterward() {
+        let last_utc_time = der::DateTime::new(2049, 12, 31, 23, 59, 59)
+            .unwrap()
+            .to_system_time();
+        let last_utc_value = super::encode_signing_time(last_utc_time).unwrap();
+        assert!(AnyRef::from(&last_utc_value)
+            .decode_as::<der::asn1::UtcTime>()
+            .is_ok());
+
+        let first_generalized_time = der::DateTime::new(2050, 1, 1, 0, 0, 0)
+            .unwrap()
+            .to_system_time();
+        let first_generalized_value = super::encode_signing_time(first_generalized_time).unwrap();
+        assert!(AnyRef::from(&first_generalized_value)
+            .decode_as::<GeneralizedTime>()
+            .is_ok());
     }
 }
