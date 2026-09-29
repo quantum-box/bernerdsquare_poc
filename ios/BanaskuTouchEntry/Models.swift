@@ -55,6 +55,7 @@ struct CredentialRecord: Codable, Identifiable {
     var issuedAt: Date
     var providerLabel: String
     var reservationID: String? = nil
+    var walletPassURL: String? = nil
 }
 
 struct TestReservation: Codable, Identifiable {
@@ -94,7 +95,12 @@ struct ExportPayload: Codable {
     var note: String
 }
 
-struct APIIssueResponse: Decodable { var id: String; var status: String?; var reservation_id: String? }
+struct APIIssueResponse: Decodable {
+    var id: String
+    var status: String?
+    var reservation_id: String?
+    var wallet_pass_url: String?
+}
 struct APIReservationResponse: Decodable {
     var id: String
     var gate_id: String?

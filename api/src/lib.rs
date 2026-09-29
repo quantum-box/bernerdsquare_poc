@@ -16,6 +16,8 @@ use tower_service::Service;
 use wasm_bindgen::JsValue;
 use worker::{event, Context, D1Database, Env, Result as WorkerResult};
 
+mod wallet_pass;
+
 #[derive(Clone)]
 struct AppState {
     env: Env,
@@ -66,6 +68,7 @@ enum ApiError {
     NotFound,
     Conflict(&'static str),
     Unavailable,
+    WalletPassUnavailable,
     Internal,
 }
 
@@ -95,6 +98,11 @@ impl IntoResponse for ApiError {
                 "unavailable",
                 "永続ストレージを利用できません。",
             ),
+            Self::WalletPassUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "wallet_pass_unavailable",
+                "Apple Walletパスの署名設定を利用できません。",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -120,6 +128,8 @@ struct HealthResponse {
 struct Credential {
     id: String,
     reservation_id: Option<String>,
+    #[serde(default)]
+    wallet_pass_url: Option<String>,
     status: String,
     provider: String,
     mode: String,
@@ -283,6 +293,7 @@ impl CredentialProvider for MockCredentialProvider {
         Credential {
             id: new_id(),
             reservation_id,
+            wallet_pass_url: None,
             status: "issued".to_owned(),
             provider: "mock".to_owned(),
             mode: "mock".to_owned(),
@@ -852,12 +863,19 @@ async fn issue_credential(
         }
     }
 
-    let credential = MockCredentialProvider.issue(request.reservation_id.clone());
+    let mut credential = MockCredentialProvider.issue(request.reservation_id.clone());
+    if wallet_pass::configured(&state.env).await {
+        credential.wallet_pass_url = Some(format!("/v1/credentials/{}/pass", credential.id));
+    }
     let event = audit_event(
         &session_id,
         "credential_issue",
         "issued",
-        "モック資格情報参照を作成しました。NFC情報は発行していません。",
+        if credential.wallet_pass_url.is_some() {
+            "テスト用Apple Walletパスの参照を作成しました。NFC・ゲート連携はありません。"
+        } else {
+            "モック資格情報参照を作成しました。NFC情報は発行していません。"
+        },
     );
     let mut statements = vec![
         credential_insert(&db, &principal.owner_id, &credential)?,
@@ -891,6 +909,36 @@ async fn get_credential(
         .await?
         .map(Json)
         .ok_or(ApiError::NotFound)
+}
+
+#[worker::send]
+async fn get_wallet_pass(
+    State(state): State<AppState>,
+    axum::Extension(principal): axum::Extension<Principal>,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let db = state.database()?;
+    let credential = credential_by_id(&db, &principal.owner_id, &id)
+        .await?
+        .filter(|credential| credential.status == "issued")
+        .ok_or(ApiError::NotFound)?;
+    if credential.wallet_pass_url.is_none() {
+        return Err(ApiError::WalletPassUnavailable);
+    }
+
+    let pass = wallet_pass::build_pkpass(&state.env, &credential.id)
+        .await
+        .map_err(|_| ApiError::WalletPassUnavailable)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, "application/vnd.apple.pkpass")
+        .header(http::header::CACHE_CONTROL, "no-store")
+        .header(
+            http::header::CONTENT_DISPOSITION,
+            "attachment; filename=banasku-test.pkpass",
+        )
+        .body(axum::body::Body::from(pass))
+        .map_err(|_| ApiError::Internal)
 }
 
 #[worker::send]
@@ -1518,6 +1566,7 @@ fn app_router(state: AppState) -> Router {
             axum::routing::post(issue_credential),
         )
         .route("/v1/credentials/{id}", get(get_credential))
+        .route("/v1/credentials/{id}/pass", get(get_wallet_pass))
         .route("/v1/reservations", axum::routing::post(create_reservation))
         .route(
             "/v1/reservations/{id}",
@@ -1558,7 +1607,18 @@ async fn fetch(
 
 #[cfg(test)]
 mod tests {
-    use super::{authorization_decision, normalize_time, sha256_hex};
+    use super::{authorization_decision, normalize_time, sha256_hex, Credential};
+
+    #[test]
+    fn legacy_credential_json_defaults_missing_wallet_link() {
+        let credential: Credential = serde_json::from_str(
+            r#"{"id":"credential-123","reservation_id":null,"status":"issued","provider":"mock","mode":"mock","presentment_supported":false,"issued_at":"2026-09-29T00:00:00.000Z"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(credential.id, "credential-123");
+        assert!(credential.wallet_pass_url.is_none());
+    }
 
     #[test]
     fn normalizes_offsets_before_comparison() {

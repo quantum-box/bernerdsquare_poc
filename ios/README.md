@@ -17,7 +17,30 @@ xcodebuild -project ios/BanaskuTouchEntry.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-To install on a physical iPhone, choose your Apple Development team under **Signing & Capabilities** in Xcode, set a unique bundle identifier if needed, connect a supported iPhone, trust the development profile, and run the scheme. This prototype does not request Apple credential/NFC entitlements and cannot issue an Apple Wallet badge.
+## Focused credential issuance tests
+
+Run the issuance-only unit tests on macOS:
+
+```sh
+swift test --package-path ios --filter CredentialIssuanceTests
+```
+
+These cover mock issuance, active and cancelled reservation binding, issuance guards and provider failures, plus the API issue contract and authenticated binary Wallet-pass download.
+
+## Apple Wallet pass-add test
+
+The credential screen can fetch a signed `.pkpass` from the configured API, then present Apple's Wallet add confirmation through PassKit. It also retains the file-import path. This tests a signed standard Wallet pass; it does not test NFC, Secure Element, gate presentation, or physical entry.
+
+To run the add-flow test:
+
+1. Register a Pass Type ID in the Apple Developer account and create its Apple-issued Pass Type ID certificate. The certificate, pass type identifier, team identifier, and private key must match.
+2. Set `WALLET_PASS_TYPE_IDENTIFIER`, `WALLET_TEAM_IDENTIFIER`, and `WALLET_ORGANIZATION_NAME` on the API Cloud App. Store the base64 DER PKCS#8 private key, Pass Type ID certificate, and WWDR intermediate as the three `WALLET_*` secrets documented in [`docs/api.md`](../docs/api.md). Keep the private key in the Cloud App secret store; do not put it in the app, D1, Git, or the manifest.
+3. In API mode, authenticate, issue a test credential, then tap **Apple Walletへ追加**. The API returns a signed test membership pass with a static QR that explicitly has no gate or NFC integration.
+4. On iPhone, PassKit presents the Wallet confirmation. If the Simulator cannot present PassKit's add sheet, the app exports the `.pkpass`; drag that file onto the iOS Simulator to add it to the simulated Wallet, as described by [Apple's pass-building guide](https://developer.apple.com/documentation/walletpasses/building-a-pass).
+
+The Pass Type ID is registered and its Apple production certificate was downloaded locally on 2026-09-29; it matches the local PKCS#8 key. The certificate and key are not stored in this repository. A locally generated `.pkpass` passed CMS signature verification and was added to the iOS Simulator, where its test member, card ID, and QR code were visible. CloudApp signing secrets are not configured yet, so issuance through the API and the app's API-to-PassKit add flow remain unverified. App Store Connect is not required for a development add-flow test. NFC/SE issuance still needs separate Apple approval and compatible gate hardware.
+
+To install the app on a physical iPhone, choose your Apple Development team under **Signing & Capabilities** in Xcode, set a unique bundle identifier if needed, connect a supported iPhone, trust the development profile, and run the scheme.
 
 ## App Store Connect and distribution
 

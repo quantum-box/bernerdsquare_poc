@@ -1,11 +1,12 @@
 # iPhone credential technology findings
 
-Reviewed 2026-09-28 against Apple Developer documentation.
+Reviewed 2026-09-29 against Apple Developer documentation.
 
 ## Current classification
 
 | Route | Classification | Evidence and condition |
 |---|---|---|
+| Apple Wallet generic membership pass (file/QR) | Signed pass verified and added to iOS Simulator; online API issuance still unverified | The existing Pass Type ID and Apple production certificate are present in the Quantum Box team. The downloaded certificate matches the local PKCS#8 private key and is valid through 2027-10-29. A locally generated `.pkpass` passed CMS signature verification and was added to the iOS Simulator, showing the test member, card ID, and QR code. CloudApp signing secrets and the Rust Worker issuance endpoint have not been configured or exercised. This does not create contactless NFC presentation. A static QR/barcode can be copied; real entry control needs a reader that scans it and an online verifier that enforces expiry and revocation. |
 | Apple Wallet contactless NFC/VAS pass | Conditional | Apple documents loyalty and membership contactless passes through Apple Pay VAS. The terminal/reader must be VAS-certified and the POS software must support VAS. No evidence yet shows that the Banasku gate reader or its controller supports this protocol. |
 | NFC & SE Platform | Conditional; strongest Apple-provided route to investigate for secure-element presentment | Japan is eligible. Apple lists corporate badges for office-space access and merchant loyalty/rewards as separate use cases. A dog-run entry credential is not automatically a corporate badge; the operator would need to establish that its member program fits an eligible use case and receive Apple's approval. Japan requires iPhone XS or later with iOS 18.1 or later. The app, approved entitlement/product configuration, applet partner, and terminal supporting ISO 14443-4 and ISO 7816-4 are also required. |
 | Core NFC tag reading | Not a phone-presented gate credential | Core NFC lets the iPhone read supported external tags. Reading an external FeliCa tag or its IDm does not issue a credential or make the iPhone present an arbitrary ID to the gate. |
@@ -15,7 +16,7 @@ Reviewed 2026-09-28 against Apple Developer documentation.
 
 ## Decision
 
-Keep `CredentialProvider` and `LockRegistrationClient` behind app/API interfaces and run the prototype in mock mode. Do not select an NFC issuance path or report gate compatibility until Apple eligibility and the exact reader/controller protocol are confirmed. Mock completion is software-flow evidence only.
+Keep `CredentialProvider` and `LockRegistrationClient` behind app/API interfaces. A standard signed `.pkpass` was generated locally and added to the iOS Simulator. The existing Pass Type ID certificate matches the local private key. CloudApp signing secrets and API-based issuance remain unconfigured, so this does not verify the Rust Worker endpoint. Do not report gate compatibility or NFC presentment until each is tested at its own boundary. A successfully added QR pass is Wallet-flow evidence only.
 
 ## External checks needed
 
@@ -30,5 +31,7 @@ NFC & SE Platform presentment requires an NFC reader and cannot be exercised in 
 
 - [Apple NFC & SE Platform requirements and territories](https://developer.apple.com/support/nfc-se-platform/)
 - [Apple Wallet loyalty and membership passes](https://developer.apple.com/wallet/loyalty-passes/)
+- [Apple Wallet pass building and signing](https://developer.apple.com/documentation/walletpasses/building-a-pass)
+- [Apple Wallet pass distribution](https://developer.apple.com/documentation/walletpasses/distributing-and-updating-a-pass)
 - [Apple Core NFC `CardSession`](https://developer.apple.com/documentation/corenfc/cardsession)
 - [Apple Core NFC `currentIDm`](https://developer.apple.com/documentation/corenfc/nfcfelicatag/currentidm)
