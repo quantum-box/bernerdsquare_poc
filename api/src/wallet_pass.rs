@@ -15,7 +15,10 @@ use cms::{
 };
 use const_oid::ObjectIdentifier;
 use der::{
-    asn1::{Any, AnyRef, Ia5StringRef, OctetString, PrintableStringRef, SetOfVec, Utf8StringRef},
+    asn1::{
+        Any, AnyRef, GeneralizedTime, Ia5StringRef, OctetString, PrintableStringRef, SetOfVec,
+        Utf8StringRef,
+    },
     Decode, Encode,
 };
 use serde::Serialize;
@@ -259,11 +262,15 @@ fn signed_attributes_signature_input(signed_attributes: &SignedAttributes) -> Re
 fn build_signed_attributes(manifest: &[u8]) -> Result<SignedAttributes, ()> {
     let content_type_oid = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.3");
     let message_digest_oid = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.4");
+    let signing_time_oid = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
     let data_oid = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.1");
     let content_type_value = Any::encode_from(&data_oid).map_err(|_| ())?;
     let digest = Sha1::digest(manifest);
     let digest_value =
         Any::encode_from(&OctetString::new(digest.to_vec()).map_err(|_| ())?).map_err(|_| ())?;
+    let signing_time =
+        GeneralizedTime::from_system_time(current_signing_time()?).map_err(|_| ())?;
+    let signing_time_value = Any::encode_from(&signing_time).map_err(|_| ())?;
 
     SignedAttributes::try_from(vec![
         Attribute {
@@ -274,8 +281,30 @@ fn build_signed_attributes(manifest: &[u8]) -> Result<SignedAttributes, ()> {
             oid: message_digest_oid,
             values: SetOfVec::try_from(vec![digest_value]).map_err(|_| ())?,
         },
+        Attribute {
+            oid: signing_time_oid,
+            values: SetOfVec::try_from(vec![signing_time_value]).map_err(|_| ())?,
+        },
     ])
     .map_err(|_| ())
+}
+
+fn current_signing_time() -> Result<SystemTime, ()> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let now_millis = js_sys::Date::now();
+        if !now_millis.is_finite() || now_millis < 0.0 {
+            return Err(());
+        }
+        UNIX_EPOCH
+            .checked_add(Duration::from_millis(now_millis as u64))
+            .ok_or(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok(SystemTime::now())
+    }
 }
 
 fn prepare_manifest_signature(manifest: &[u8]) -> Result<(SignedAttributes, Vec<u8>), ()> {
@@ -671,7 +700,7 @@ mod tests {
     };
     use const_oid::ObjectIdentifier;
     use der::{
-        asn1::{Any, AnyRef, OctetString, OctetStringRef, SetOfVec},
+        asn1::{Any, AnyRef, GeneralizedTime, OctetString, OctetStringRef, SetOfVec},
         Decode, Encode,
     };
     use rsa::{
@@ -809,6 +838,16 @@ mod tests {
             embedded_attributes.to_der().unwrap().first(),
             Some(&0x31),
             "CMS signs the DER SET OF encoding of signedAttrs"
+        );
+        let signing_time_attribute = embedded_attributes
+            .iter()
+            .find(|attribute| attribute.oid == ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5"))
+            .expect("CMS signature includes the signing-time attribute");
+        assert_eq!(signing_time_attribute.values.len(), 1);
+        assert!(
+            AnyRef::from(signing_time_attribute.values.iter().next().unwrap())
+                .decode_as::<GeneralizedTime>()
+                .is_ok()
         );
         let message_digest = embedded_attributes
             .iter()
