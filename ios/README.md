@@ -50,11 +50,11 @@ App Store Connect is not needed to build or run this prototype in the Simulator.
 
 The [`testflight.yml`](../.github/workflows/testflight.yml) workflow archives the iOS app and uploads it to App Store Connect when iOS files change on `main`. It can also be started manually from the Actions tab on `main`. The upload goes to TestFlight after Apple's processing; it does not submit the app for App Store review or add testers to a testing group. The build number comes from the GitHub Actions run number and attempt.
 
-The Apple and GitHub configuration was set up on 2026-09-30:
+The Apple and GitHub configuration was started on 2026-09-30:
 
 - Apple Developer App ID `jp.quantumbox.banasku.touch-entry-poc` is registered with the Wallet capability enabled.
 - The App Store Connect app record **Banasku Touch Entry** is registered for iOS with Japanese as its primary language and SKU `banasku-touch-entry-poc`.
-- A Team API Key with the **Developer** role was created for Xcode automatic signing and upload. Team keys are issued at the Quantum Box account level. Its private `.p8` key is stored outside this repository.
+- A Team API Key with the **Developer** role was created for App Store Connect upload. Its private `.p8` key is stored outside this repository. CI uses manual signing so this key does not need cloud-managed distribution-certificate access.
 - These Actions repository secrets are configured in `quantum-box/bernerdsquare_poc`:
 
    | Secret | Value |
@@ -64,7 +64,19 @@ The Apple and GitHub configuration was set up on 2026-09-30:
    | `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect issuer ID |
    | `APP_STORE_CONNECT_API_PRIVATE_KEY` | Full contents of the downloaded `.p8` file |
 
-The private key is written to the temporary GitHub runner only for the build and upload. No certificate, profile, or API key is committed to the repository. The workflow becomes active after `testflight.yml` reaches `main`; Apple processes each uploaded build before it appears in TestFlight.
+The private API key is written to the temporary GitHub runner only for the upload. No certificate, profile, or API key is committed to the repository.
+
+#### Signing secrets required by CI
+
+Before the workflow can produce an uploadable build, create an Apple Distribution certificate and an App Store provisioning profile for `jp.quantumbox.banasku.touch-entry-poc`. The provisioning profile must include the app's enabled Wallet capability and use the same Apple Developer team as `APPLE_TEAM_ID`. Export the certificate and its private key together as a password-protected `.p12` file, then add these repository Actions secrets:
+
+| Secret | Value |
+| --- | --- |
+| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Base64-encoded password-protected `.p12` file |
+| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used to export the `.p12` file |
+| `IOS_APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store provisioning profile (`.mobileprovision`) |
+
+The workflow validates the profile's team, bundle ID, and App Store distribution type. It imports the certificate into a temporary runner keychain, signs and uploads the archive, then removes the key, certificate, profile, and keychain. For example, encode each binary file on macOS with `base64 -i file | tr -d '\n'`; keep the `.p12` private key out of Git and chat. After these three secrets are configured and the workflow change reaches `main`, an iOS change or a manual run on `main` starts the upload. Apple processes the build before it appears in TestFlight.
 
 The App ID's Wallet capability supports the app's standard Wallet pass entitlement. It does not grant NFC & SE or other restricted entitlements. Apple entitlement approval and the gate provider's compatibility confirmation remain separate requirements for real credential issuance.
 
