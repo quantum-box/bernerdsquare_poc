@@ -2,7 +2,7 @@
 
 All API routes require `Authorization: Bearer <token>`. The Worker reads `API_BEARER_TOKENS_JSON` as a secret JSON object mapping opaque tokens to server-side member IDs. The client never submits an owner ID. Requests are scoped to that mapped owner. Invalid credentials receive `401`; a resource owned by another member is indistinguishable from a missing resource.
 
-The API currently uses mock adapters only. It persists state in D1 and returns `mode: "mock"`. `gate_applied` and `physical_unlock_confirmed` are always false.
+The credential and gate adapters remain mock implementations. The API persists state in D1 and returns `mode: "mock"`; `gate_applied` and `physical_unlock_confirmed` are always false. When an Apple Pass Type ID signer is configured, the API can also generate a standard signed generic Wallet pass for testing. That pass has a static test QR and is not a gate credential.
 
 ## Routes
 
@@ -12,6 +12,7 @@ The API currently uses mock adapters only. It persists state in D1 and returns `
 | GET | `/v1/identity` | Return the authenticated account's stable opaque identity |
 | POST | `/v1/credentials/issue` | Create a mock credential reference; no NFC payload is created |
 | GET | `/v1/credentials/{id}` | Read an owner-scoped credential |
+| GET | `/v1/credentials/{id}/pass` | Return the owner's signed test `.pkpass` when Wallet signing is configured |
 | POST | `/v1/reservations` | Create a test reservation; interval is `[starts_at, ends_at)` |
 | GET | `/v1/reservations/{id}` | Read an owner-scoped reservation |
 | PATCH | `/v1/reservations/{id}` | Change the complete test reservation interval |
@@ -38,6 +39,18 @@ For a local failure/retry check, create a registration with `simulate_failure: t
 1. Install the Rust `wasm32-unknown-unknown` target, `worker-build`, and Wrangler.
 2. Create `api/.dev.vars` from `.dev.vars.example` and use a fresh local-only token.
 3. From `api/`, run `wrangler d1 migrations apply banasku-touch-entry-local --local --config wrangler.local.toml`, then start `wrangler dev --config wrangler.local.toml`.
-4. The Tachyon manifest at the repository root owns the `bernard-square` CloudApp and provisions its D1 binding at build time. Add `API_BEARER_TOKENS_JSON` through `tachyon compute env set --secret` for the preview target; the secret value stays outside Git. Trigger PR #1 as a preview build to deploy the current Worker branch.
+4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. Its install command adds `wasm32-unknown-unknown` and installs `worker-build` in the Kata builder before running `worker-build --release`. The manifest dry-run returned `UNCHANGED`, but that does not prove which provider the server will select. A manual build of `main` was routed to CodeBuild and failed before compilation because its generated buildspec exceeded CodeBuild's 25,600-character limit. Explicit Rust Worker Kata support is under review in [Tachyon PR #11019](https://github.com/quantum-box/tachyon-apps/pull/11019); do not trigger another CloudApp build until that change is merged and deployed. No successful CloudApp build or deployment has been verified. Add `API_BEARER_TOKENS_JSON` to the sandbox/preview Cloud App secret store only after the Kata build path is ready; keep its value outside Git.
 
 The deployed CloudApp uses the same mock adapter as local mode. It never contacts a gate or confirms a physical unlock.
+
+## Apple Wallet pass status
+
+`POST /v1/credentials/issue` creates an owner-scoped test reference and includes `wallet_pass_url` only when all Wallet signing configuration is present. Fetch that path with the same Bearer token to receive `application/vnd.apple.pkpass`. The endpoint checks that the credential belongs to the caller and remains issued, and sends `Cache-Control: no-store`.
+
+Before advertising a Wallet URL, the Worker checks that the PKCS#8 key matches the Pass Type ID certificate, the certificate subject matches the configured Pass Type ID and Team ID, the signer certificate allows digital signatures and carries Apple's Pass Type ID extended key usage, both certificates are current, and the signer certificate verifies against the pinned Apple WWDR G4 certificate. The Worker does not query Apple's certificate revocation list; configure only an active, unrevoked Apple certificate. The detached CMS structure and RSA signature are covered by focused tests using test-only keys and certificates.
+
+Configure the non-secret `WALLET_PASS_TYPE_IDENTIFIER`, `WALLET_TEAM_IDENTIFIER`, and `WALLET_ORGANIZATION_NAME` Worker variables in `tachyon.yml`. Store the base64-encoded DER PKCS#8 private key, Pass Type ID certificate, and Apple WWDR intermediate only as Cloud App secrets named `WALLET_SIGNER_PRIVATE_KEY_PKCS8_B64`, `WALLET_SIGNER_CERTIFICATE_DER_B64`, and `WALLET_WWDR_CERTIFICATE_DER_B64`. Never put the private key in the iOS app, D1, Git, build logs, or `tachyon.yml`; configure the signing secrets after the Apple-issued Pass Type ID certificate and WWDR intermediate are available.
+
+The Pass Type ID was already registered in the Quantum Box, Inc. Apple Developer team. Its Apple production certificate was downloaded on 2026-09-29, is valid through 2027-10-29, and matches the local PKCS#8 private key. A locally generated `.pkpass` passed CMS signature verification and was added to the iOS Simulator, where its test member, card ID, and QR code were visible. This verifies local signing and the Simulator Wallet add flow; it does not verify the Rust Worker endpoint, CloudApp secrets, NFC presentation, or gate compatibility.
+
+The iOS API screen exposes **Apple Walletへ追加** after the API returns `wallet_pass_url`. It downloads the binary with Bearer authentication and presents PassKit's add sheet when available; if the runtime cannot present that sheet, it exports the `.pkpass` for opening or dragging into iOS Simulator. A standard QR/barcode pass does not implement NFC or prove gate compatibility. App Store Connect is not needed to issue or add a development pass; the Apple Developer Pass Type ID and its Apple-issued certificate are needed to sign one.

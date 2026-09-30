@@ -73,13 +73,22 @@ final class AppStore: ObservableObject {
     @Published var alertMessage: String?
 
     @Published private(set) var sessionID: String
-    private let mock = MockBackend()
+    private let mock: MockBackend
+    private let credentialProviderOverride: CredentialProvider?
+    private let snapshotDefaults: UserDefaults
     private static let snapshotKey = "banasku-touch-entry.snapshot.v1"
     static let displayTimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
     private var isRestoringSnapshot = false
 
-    init() {
-        let snapshot = Self.loadSnapshot()
+    init(
+        snapshotDefaults: UserDefaults = .standard,
+        mockBackend: MockBackend? = nil,
+        credentialProviderOverride: CredentialProvider? = nil
+    ) {
+        self.snapshotDefaults = snapshotDefaults
+        self.mock = mockBackend ?? MockBackend()
+        self.credentialProviderOverride = credentialProviderOverride
+        let snapshot = Self.loadSnapshot(from: snapshotDefaults)
         sessionID = snapshot?.sessionID ?? UUID().uuidString
         if let snapshot {
             isRestoringSnapshot = true
@@ -148,7 +157,27 @@ final class AppStore: ObservableObject {
         credentialState = value.state
         if registration?.state == .cancelled { registration = nil }
         lastAuthorization = nil
-        record("資格情報の発行", result: "成功", detail: mode == .mock ? "モック参照を作成" : "サーバーの参照IDを取得。Apple Wallet/NFC発行ではありません")
+        let detail: String
+        if mode == .mock {
+            detail = "モック参照を作成"
+        } else if value.walletPassURL != nil {
+            detail = "署名済みWalletテストパスを取得可能。NFC・ゲート連携はありません。"
+        } else {
+            detail = "サーバー参照IDを作成。Wallet署名設定は未構成です。"
+        }
+        record("資格情報の発行", result: "成功", detail: detail)
+    }
+
+    func fetchWalletPass() async -> Data? {
+        guard mode == .api, let credential, credential.state == .issued, credential.walletPassURL != nil else {
+            alertMessage = "署名済みWalletパスを取得できるAPI発行資格情報がありません。"
+            return nil
+        }
+        guard let data = await run(action: "Apple Walletパスの取得", operation: {
+            try await self.credentialProvider.walletPass(id: credential.id)
+        }) else { return nil }
+        record("Apple Walletパスの取得", result: "成功", detail: "署名済みテストパスを取得。NFC・ゲート連携はありません。")
+        return data
     }
 
     func createReservation() async {
@@ -337,7 +366,10 @@ final class AppStore: ObservableObject {
         )
     }
 
-    private var credentialProvider: CredentialProvider { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
+    private var credentialProvider: CredentialProvider {
+        if let credentialProviderOverride { return credentialProviderOverride }
+        return mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID)
+    }
     private var registrationClient: LockRegistrationClient { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
 
     private func clearWorkflowState() {
@@ -398,11 +430,11 @@ final class AppStore: ObservableObject {
             events: Array(events.suffix(200))
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: Self.snapshotKey)
+        snapshotDefaults.set(data, forKey: Self.snapshotKey)
     }
 
-    private static func loadSnapshot() -> AppSnapshot? {
-        guard let data = UserDefaults.standard.data(forKey: snapshotKey) else { return nil }
+    private static func loadSnapshot(from defaults: UserDefaults) -> AppSnapshot? {
+        guard let data = defaults.data(forKey: snapshotKey) else { return nil }
         return try? JSONDecoder().decode(AppSnapshot.self, from: data)
     }
 

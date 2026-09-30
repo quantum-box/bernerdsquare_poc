@@ -15,7 +15,9 @@ spec:
       framework: rust_worker
       deploymentTarget: cloudflare_workers
       build:
+        installCommand: rustup target add wasm32-unknown-unknown && cargo install worker-build --locked
         command: worker-build --release
+        runnerBackend: kubernetes_kata
       readinessProof:
         path: /healthz
         expectedStatus: 200
@@ -35,3 +37,9 @@ spec:
           value: mock
         - name: ALLOW_TIME_SIMULATION
           value: "false"
+        - name: WALLET_PASS_TYPE_IDENTIFIER
+          value: pass.jp.quantumbox.banasku.touch-entry-poc
+        - name: WALLET_TEAM_IDENTIFIER
+          value: J8429VCGMR
+        - name: WALLET_ORGANIZATION_NAME
+          value: Banasku

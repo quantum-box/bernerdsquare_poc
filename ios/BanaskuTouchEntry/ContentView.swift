@@ -1,8 +1,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PassKit
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var isImportingWalletPass = false
+    @State private var isExportingWalletPass = false
+    @State private var walletPassDocument: WalletPassDocument?
+    @State private var isShowingWalletPass = false
+    @State private var walletPassController: PKAddPassesViewController?
 
     var body: some View {
         TabView {
@@ -15,6 +21,26 @@ struct ContentView: View {
         } message: { Text(store.alertMessage ?? "") }
         .fileExporter(isPresented: $store.isExporting, document: ExportDocument(payload: store.exportPayload()), contentType: .json, defaultFilename: "banasku-session-\(store.sessionID.prefix(8))") { result in
             if case .failure(let error) = result { store.alertMessage = "エクスポートできませんでした: \(error.localizedDescription)" }
+        }
+        .fileExporter(isPresented: $isExportingWalletPass, document: walletPassDocument, contentType: UTType(filenameExtension: "pkpass") ?? .data, defaultFilename: "banasku-test.pkpass") { result in
+            switch result {
+            case .success:
+                store.alertMessage = "Walletパスを書き出しました。Simulatorでは保存した.pkpassをSimulatorへドラッグして追加してください。"
+            case .failure(let error):
+                store.alertMessage = "Walletパスを書き出せませんでした: \(error.localizedDescription)"
+            }
+            walletPassDocument = nil
+        }
+        .fileImporter(
+            isPresented: $isImportingWalletPass,
+            allowedContentTypes: [UTType(filenameExtension: "pkpass", conformingTo: .data) ?? .data],
+            allowsMultipleSelection: false,
+            onCompletion: handleWalletPassImport
+        )
+        .sheet(isPresented: $isShowingWalletPass, onDismiss: { walletPassController = nil }) {
+            if let walletPassController {
+                WalletPassAddSheet(controller: walletPassController)
+            }
         }
     }
 
@@ -79,24 +105,72 @@ struct ContentView: View {
 
     private var credentialCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("入場資格情報", subtitle: "実際のApple Wallet資格情報は発行しません", icon: "key.horizontal")
+            sectionHeading("入場資格情報", subtitle: store.credential?.walletPassURL == nil ? "API署名設定があればWalletテストカードを発行できます" : "署名済みApple Walletテストカードを取得できます", icon: "key.horizontal")
             HStack {
                 Label(store.credentialState == .notIssued ? (store.mode == .mock ? "モック発行可能" : "API発行先を設定可能") : store.credentialState.label, systemImage: "checkmark.seal")
                     .font(.subheadline)
                 Spacer()
-                Button(store.mode == .mock ? "モック発行" : "新規参照を作成") { Task { await store.issueCredential() } }
+                Button(store.mode == .mock ? "モック発行" : "サーバー発行を試す") { Task { await store.issueCredential() } }
                     .buttonStyle(.borderedProminent).disabled(!store.canIssueCredential)
             }
             if let item = store.credential {
                 Text("参照ID: …\(item.id.suffix(6))")
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
                 Text(item.providerLabel).font(.caption).foregroundStyle(.secondary)
+                if item.walletPassURL != nil && item.state == .issued {
+                    Button {
+                        Task {
+                            guard let data = await store.fetchWalletPass() else { return }
+                            handleWalletPassData(data)
+                        }
+                    } label: {
+                        Label("Apple Walletへ追加", systemImage: "wallet.pass")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(store.isBusy || store.isExporting)
+                }
             } else if store.mode == .api {
-                Label("Apple発行権限: 未設定", systemImage: "exclamationmark.triangle")
+                Label("Wallet署名設定: 発行後にAPI応答で確認", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.orange)
             }
         }
         .cardStyle()
+    }
+
+    private func handleWalletPassImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let hasSecurityScope = url.startAccessingSecurityScopedResource()
+            defer { if hasSecurityScope { url.stopAccessingSecurityScopedResource() } }
+            do {
+                handleWalletPassData(try Data(contentsOf: url))
+            } catch {
+                store.alertMessage = "署名済みApple Walletパスを読み込めませんでした。Pass Type ID証明書で署名した.pkpassか確認してください。"
+            }
+        case .failure:
+            store.alertMessage = "Walletパスを選択できませんでした。もう一度お試しください。"
+        }
+    }
+
+    private func handleWalletPassData(_ data: Data) {
+        do {
+            let pass = try PKPass(data: data)
+            guard PKAddPassesViewController.canAddPasses() else {
+                walletPassDocument = WalletPassDocument(data: data)
+                isExportingWalletPass = true
+                return
+            }
+            guard let controller = PKAddPassesViewController(pass: pass) else {
+                store.alertMessage = "Walletの追加画面を準備できませんでした。パス形式を確認してください。"
+                return
+            }
+            walletPassController = controller
+            isShowingWalletPass = true
+        } catch {
+            store.alertMessage = "署名済みApple Walletパスを読み込めませんでした。Pass Type ID証明書で署名した.pkpassか確認してください。"
+        }
     }
 
     private var reservationCard: some View {
@@ -250,6 +324,16 @@ struct ContentView: View {
                 Text("APIモードではtokenを入力して認証するまで操作できません。接続先またはtokenのアカウントが変わると前の状態とログを消去します。同じアカウントなら、アプリ再起動後も保存済みIDを同期できます。tokenはメモリー上だけで使い、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            Section("Apple Walletパスの追加テスト") {
+                Button {
+                    isImportingWalletPass = true
+                } label: {
+                    Label("署名済み.pkpassをWalletへ追加", systemImage: "wallet.pass")
+                }
+                .disabled(store.isBusy || store.isExporting)
+                Text("テスト用の署名済みパスをファイルから読み込み、Appleの追加確認を表示します。APIの参照ID発行やNFC・ゲート提示とは別の操作です。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section("実機連携の状態") {
                 statusRow("Apple発行 entitlement", value: CredentialState.unavailableEntitlement.label, color: .orange)
                 statusRow("iPhoneデバイス対応", value: CredentialState.unavailableDevice.label + " (未検査)", color: .secondary)
@@ -284,6 +368,50 @@ struct ContentView: View {
 
     private func statusRow(_ title: String, value: String, color: Color) -> some View {
         HStack { Text(title).font(.subheadline); Spacer(); Text(value).font(.subheadline.weight(.medium)).foregroundStyle(color).multilineTextAlignment(.trailing) }
+    }
+}
+
+private struct WalletPassDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [UTType(filenameExtension: "pkpass") ?? .data] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+private struct WalletPassAddSheet: UIViewControllerRepresentable {
+    let controller: PKAddPassesViewController
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator { dismiss() }
+    }
+
+    func makeUIViewController(context: Context) -> PKAddPassesViewController {
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: PKAddPassesViewController, context: Context) {}
+
+    final class Coordinator: NSObject, PKAddPassesViewControllerDelegate {
+        private let onFinish: () -> Void
+
+        init(onFinish: @escaping () -> Void) {
+            self.onFinish = onFinish
+        }
+
+        func addPassesViewControllerDidFinish(_ controller: PKAddPassesViewController) {
+            onFinish()
+        }
     }
 }
 

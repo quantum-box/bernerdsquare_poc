@@ -5,6 +5,7 @@ protocol CredentialProvider {
     var availability: CredentialState { get }
     func issue(reservationID: String?) async throws -> CredentialRecord
     func credential(id: String) async throws -> CredentialRecord
+    func walletPass(id: String) async throws -> Data
 }
 
 @MainActor
@@ -26,6 +27,7 @@ enum ServiceError: LocalizedError {
     case invalidTimeRange
     case httpStatus(Int)
     case invalidResponse
+    case walletPassUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -33,6 +35,7 @@ enum ServiceError: LocalizedError {
         case .invalidTimeRange: "終了日時は開始日時より後にしてください。"
         case .httpStatus(let code): "APIがHTTP \(code)を返しました。認証情報や設定を確認してください。"
         case .invalidResponse: "APIの応答形式を読み取れませんでした。"
+        case .walletPassUnavailable: "署名済みWalletパスを取得できません。APIのPass Type ID署名設定を確認してください。"
         }
     }
 }
@@ -53,6 +56,10 @@ final class MockBackend: CredentialProvider, LockRegistrationClient {
     func credential(id: String) async throws -> CredentialRecord {
         guard let item = credentials[id] else { throw ServiceError.invalidResponse }
         return item
+    }
+
+    func walletPass(id: String) async throws -> Data {
+        throw ServiceError.walletPassUnavailable
     }
 
     func createReservation(gateID: String, startsAt: Date, endsAt: Date) async throws -> TestReservation {
@@ -157,13 +164,17 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
     private let sessionID: String
     private let session: URLSession
 
-    init(baseURL: String, bearerToken: String, sessionID: String) {
+    init(baseURL: String, bearerToken: String, sessionID: String, session: URLSession? = nil) {
         self.baseURLString = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.token = bearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sessionID = sessionID
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 20
-        self.session = URLSession(configuration: configuration)
+        if let session {
+            self.session = session
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 20
+            self.session = URLSession(configuration: configuration)
+        }
     }
 
     var availability: CredentialState { .issued }
@@ -178,12 +189,40 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
         var body: [String: String] = ["request_id": UUID().uuidString, "session_id": sessionID]
         if let reservationID { body["reservation_id"] = reservationID }
         let response: APIIssueResponse = try await request("POST", path: "/v1/credentials/issue", body: body)
-        return CredentialRecord(id: response.id, state: .issued, issuedAt: .now, providerLabel: "API発行参照 (Apple発行ではありません)", reservationID: reservationID)
+        let id = response.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, id == response.id,
+              response.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "issued",
+              response.reservation_id == reservationID else { throw ServiceError.invalidResponse }
+        let walletPassURL = try Self.validatedWalletPassURL(response.wallet_pass_url, credentialID: id)
+        let providerLabel = walletPassURL == nil
+            ? "API発行参照 (Wallet署名設定なし)"
+            : "API発行・署名済みWalletテストパス取得可能 (NFCなし)"
+        return CredentialRecord(id: id, state: .issued, issuedAt: .now, providerLabel: providerLabel, reservationID: response.reservation_id, walletPassURL: walletPassURL)
     }
 
     func credential(id: String) async throws -> CredentialRecord {
         let response: APIIssueResponse = try await request("GET", path: "/v1/credentials/\(Self.path(id))")
-        return CredentialRecord(id: response.id, state: Self.credentialState(response.status), issuedAt: .now, providerLabel: "API参照 (Apple発行ではありません)", reservationID: response.reservation_id)
+        let walletPassURL = try Self.validatedWalletPassURL(response.wallet_pass_url, credentialID: response.id)
+        let providerLabel = walletPassURL == nil
+            ? "API参照 (Wallet署名設定なし)"
+            : "API参照・署名済みWalletテストパス取得可能 (NFCなし)"
+        return CredentialRecord(id: response.id, state: Self.credentialState(response.status), issuedAt: .now, providerLabel: providerLabel, reservationID: response.reservation_id, walletPassURL: walletPassURL)
+    }
+
+    func walletPass(id: String) async throws -> Data {
+        let url = try apiURL(for: Self.walletPassPath(id: id))
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/vnd.apple.pkpass", forHTTPHeaderField: "Accept")
+        request.setValue(sessionID, forHTTPHeaderField: "X-Session-ID")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ServiceError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw ServiceError.httpStatus(http.statusCode) }
+        guard http.mimeType?.lowercased() == "application/vnd.apple.pkpass", !data.isEmpty else {
+            throw ServiceError.invalidResponse
+        }
+        return data
     }
 
     func createReservation(gateID: String, startsAt: Date, endsAt: Date) async throws -> TestReservation {
@@ -251,17 +290,7 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
     }
 
     private func request<T: Decodable>(_ method: String, path: String, body: Any? = nil, idempotencyKey: String? = nil) async throws -> T {
-        guard let base = URL(string: baseURLString), let scheme = base.scheme?.lowercased(),
-              (scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1"].contains(base.host ?? ""))),
-              var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { throw ServiceError.invalidConfiguration }
-        let route = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
-        let prefix = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let routePath = route.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        components.percentEncodedPath = "/" + [prefix, routePath].filter { !$0.isEmpty }.joined(separator: "/")
-        if let query = path.split(separator: "?", maxSplits: 1).dropFirst().first {
-            components.percentEncodedQuery = String(query)
-        }
-        guard let url = components.url else { throw ServiceError.invalidConfiguration }
+        let url = try apiURL(for: path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -286,6 +315,21 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
         catch { throw ServiceError.invalidResponse }
     }
 
+    private func apiURL(for path: String) throws -> URL {
+        guard let base = URL(string: baseURLString), let scheme = base.scheme?.lowercased(),
+              (scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1"].contains(base.host ?? ""))),
+              var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { throw ServiceError.invalidConfiguration }
+        let route = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
+        let prefix = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let routePath = route.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.percentEncodedPath = "/" + [prefix, routePath].filter { !$0.isEmpty }.joined(separator: "/")
+        if let query = path.split(separator: "?", maxSplits: 1).dropFirst().first {
+            components.percentEncodedQuery = String(query)
+        }
+        guard let url = components.url else { throw ServiceError.invalidConfiguration }
+        return url
+    }
+
     private static func registrationState(_ status: String?) -> RegistrationState {
         switch status?.lowercased() {
         case "registered", "active", "ready": .registered
@@ -308,6 +352,16 @@ final class APIClient: CredentialProvider, LockRegistrationClient {
 
     private static func path(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))) ?? value
+    }
+
+    private static func walletPassPath(id: String) -> String {
+        "/v1/credentials/\(path(id))/pass"
+    }
+
+    private static func validatedWalletPassURL(_ value: String?, credentialID: String) throws -> String? {
+        guard let value else { return nil }
+        guard value == walletPassPath(id: credentialID) else { throw ServiceError.invalidResponse }
+        return value
     }
 
     private static func isoString(_ date: Date) -> String {

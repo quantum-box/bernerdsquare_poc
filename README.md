@@ -12,7 +12,7 @@ Native SwiftUI iPhone app and a Rust API built for Cloudflare Workers. This repo
 
 ## Safety boundary
 
-The API has only mock credential and lock adapters. `gate_applied` and `physical_unlock_confirmed` remain false, including when the mock registration state is `registered`. Gate credentials, Apple signing keys, and lock-management secrets are not stored in the app or repository. Configure test-member bearer tokens as Worker secrets; the server maps each token to an owner and never accepts an owner ID from the request body.
+The API has only mock credential and lock adapters. `gate_applied` and `physical_unlock_confirmed` remain false, including when the mock registration state is `registered`. Production gate credentials, Apple signing keys, and lock-management secrets are not stored in the app or repository. The Wallet CMS test uses a disposable test-only key and certificates; they cannot issue a production pass. Configure test-member bearer tokens as Worker secrets; the server maps each token to an owner and never accepts an owner ID from the request body.
 
 ## Current validation boundary
 
