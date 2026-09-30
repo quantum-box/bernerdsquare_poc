@@ -54,29 +54,27 @@ The Apple and GitHub configuration was started on 2026-09-30:
 
 - Apple Developer App ID `jp.quantumbox.banasku.touch-entry-poc` is registered with the Wallet capability enabled.
 - The App Store Connect app record **Banasku Touch Entry** is registered for iOS with Japanese as its primary language and SKU `banasku-touch-entry-poc`.
-- A Team API Key with the **Developer** role was created for App Store Connect upload. Its private `.p8` key is stored outside this repository. CI uses manual signing so this key does not need cloud-managed distribution-certificate access.
-- These Actions repository secrets are configured in `quantum-box/bernerdsquare_poc`:
+- A Team API Key with the **Developer** role and its private `.p8` key are already configured as repository secrets. The first CI upload attempt could authenticate to App Store Connect but failed during archive export because this role cannot use the team's cloud-managed distribution certificate.
+- The GitHub Actions environment `testflight` is configured to allow deployments from `main` only. The workflow now uses automatic Xcode signing and reads a dedicated API key from this environment. The existing Developer-role repository key is no longer used by this workflow.
+- These repository secrets are configured in `quantum-box/bernerdsquare_poc` and remain shared with the workflow:
 
    | Secret | Value |
    | --- | --- |
    | `APPLE_TEAM_ID` | Quantum Box Apple Developer Team ID |
-   | `APP_STORE_CONNECT_API_KEY_ID` | Team API key ID |
    | `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect issuer ID |
-   | `APP_STORE_CONNECT_API_PRIVATE_KEY` | Full contents of the downloaded `.p8` file |
 
-The private API key is written to the temporary GitHub runner only for the upload. No certificate, profile, or API key is committed to the repository.
+No certificate, profile, or API key is committed to the repository.
 
-#### Signing secrets required by CI
+#### TestFlight environment secrets required by CI
 
-Before the workflow can produce an uploadable build, create a GitHub Actions environment named `testflight` and restrict its deployment branches to `main`. Then create an Apple Distribution certificate and an App Store provisioning profile for `jp.quantumbox.banasku.touch-entry-poc`. The provisioning profile must include the app's enabled Wallet capability and use the same Apple Developer team as `APPLE_TEAM_ID`. Export the certificate and its private key together as a password-protected `.p12` file, then add these environment secrets to `testflight`:
+The workflow uses Xcode cloud-managed signing, so the API key needs permission to manage the team's distribution certificates and provisioning profiles. A dedicated Team API key with the **Admin** role is required for this setup. App Store Connect Admin access applies across the team's apps; the `testflight` environment and its `main`-only deployment rule limit where this workflow can use the key, but do not narrow the key's Apple-side permissions. Create and store this key only after approving that access scope, then add these environment secrets to `testflight`:
 
 | Secret | Value |
 | --- | --- |
-| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64` | Base64-encoded password-protected `.p12` file |
-| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used to export the `.p12` file |
-| `IOS_APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store provisioning profile (`.mobileprovision`) |
+| `TESTFLIGHT_APP_STORE_CONNECT_API_KEY_ID` | ID of the dedicated Admin-role Team API key |
+| `TESTFLIGHT_APP_STORE_CONNECT_API_PRIVATE_KEY` | Full contents of that key's downloaded `.p8` file |
 
-The workflow validates the profile's team, bundle ID, App Store distribution type, and Wallet entitlement. It imports the certificate into a temporary runner keychain, signs and uploads the archive, then removes the key, certificate, profile, and keychain. For example, encode each binary file on macOS with `base64 -i file | tr -d '\n'`; keep the `.p12` private key out of Git and chat. After the environment and its three secrets are configured and the workflow change reaches `main`, an iOS change or a manual run on `main` starts the upload. Apple processes the build before it appears in TestFlight.
+The private API key is written to the temporary GitHub runner only for the upload and then removed. Xcode signs the archive using the team's cloud-managed distribution certificate. After the environment secrets are configured and the workflow change reaches `main`, an iOS change or a manual run on `main` starts the upload. Apple processes the build before it appears in TestFlight.
 
 The App ID's Wallet capability supports the app's standard Wallet pass entitlement. It does not grant NFC & SE or other restricted entitlements. Apple entitlement approval and the gate provider's compatibility confirmation remain separate requirements for real credential issuance.
 
