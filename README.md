@@ -4,7 +4,7 @@ Native SwiftUI iPhone app and a Rust API built for Cloudflare Workers. This repo
 
 ## Components
 
-- `ios/` — iPhone test app with mock and API-backed flows.
+- `ios/` — iPhone test app with mock and API-backed flows; [TestFlight auto-upload setup](ios/README.md#testflight-auto-upload).
 - `api/` — Rust/axum Worker API, D1 migrations, and local Wrangler configuration.
 - `docs/credential-technology.md` — Apple credential options and current eligibility findings.
 - `docs/device-compatibility.md` — equipment details still needed to decide gate compatibility.
