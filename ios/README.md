@@ -46,7 +46,27 @@ To install the app on a physical iPhone, choose your Apple Development team unde
 
 App Store Connect is not needed to build or run this prototype in the Simulator. For a personal on-device development install, Xcode can sign with an Apple Account's Personal Team; Apple limits those profiles and they expire after seven days. For TestFlight or App Store distribution, the organization needs an active Apple Developer Program membership and an App Store Connect app record before uploading a build. Register an explicit App ID whose bundle ID matches the Xcode target, and give the person uploading the build an appropriate App Store Connect role. The Account Holder must accept the current agreements before creating the app record.
 
-App Store Connect setup does not grant NFC & SE, Wallet, or other restricted entitlements. Apple entitlement approval and the gate provider's compatibility confirmation remain separate requirements for real credential issuance.
+### TestFlight auto upload
+
+The [`testflight.yml`](../.github/workflows/testflight.yml) workflow archives the iOS app and uploads it to App Store Connect when iOS files change on `main`. It can also be started manually from the Actions tab on `main`. The upload goes to TestFlight after Apple's processing; it does not submit the app for App Store review or add testers to a testing group. The build number comes from the GitHub Actions run number and attempt.
+
+The Apple and GitHub configuration was set up on 2026-09-30:
+
+- Apple Developer App ID `jp.quantumbox.banasku.touch-entry-poc` is registered with the Wallet capability enabled.
+- The App Store Connect app record **Banasku Touch Entry** is registered for iOS with Japanese as its primary language and SKU `banasku-touch-entry-poc`.
+- A Team API Key with the **Developer** role was created for Xcode automatic signing and upload. Team keys are issued at the Quantum Box account level. Its private `.p8` key is stored outside this repository.
+- These Actions repository secrets are configured in `quantum-box/bernerdsquare_poc`:
+
+   | Secret | Value |
+   | --- | --- |
+   | `APPLE_TEAM_ID` | Quantum Box Apple Developer Team ID |
+   | `APP_STORE_CONNECT_API_KEY_ID` | Team API key ID |
+   | `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect issuer ID |
+   | `APP_STORE_CONNECT_API_PRIVATE_KEY` | Full contents of the downloaded `.p8` file |
+
+The private key is written to the temporary GitHub runner only for the build and upload. No certificate, profile, or API key is committed to the repository. The workflow becomes active after `testflight.yml` reaches `main`; Apple processes each uploaded build before it appears in TestFlight.
+
+The App ID's Wallet capability supports the app's standard Wallet pass entitlement. It does not grant NFC & SE or other restricted entitlements. Apple entitlement approval and the gate provider's compatibility confirmation remain separate requirements for real credential issuance.
 
 ## API mode
 

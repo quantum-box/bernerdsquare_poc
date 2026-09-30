@@ -1,0 +1,108 @@
+name: Upload iOS app to TestFlight
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ios/**"
+      - ".github/workflows/testflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-main
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: github.repository == 'quantum-box/bernerdsquare_poc' && github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          : "${APP_STORE_CONNECT_API_KEY_ID:?Missing APP_STORE_CONNECT_API_KEY_ID secret}"
+          : "${APP_STORE_CONNECT_API_PRIVATE_KEY:?Missing APP_STORE_CONNECT_API_PRIVATE_KEY secret}"
+
+          key_dir="$RUNNER_TEMP/app-store-connect-private-keys"
+          mkdir -p "$key_dir"
+          key_path="$key_dir/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          echo "ASC_AUTH_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Archive and upload to TestFlight
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID secret}"
+          : "${APP_STORE_CONNECT_API_KEY_ID:?Missing APP_STORE_CONNECT_API_KEY_ID secret}"
+          : "${APP_STORE_CONNECT_API_ISSUER_ID:?Missing APP_STORE_CONNECT_API_ISSUER_ID secret}"
+          : "${ASC_AUTH_KEY_PATH:?App Store Connect API key was not installed}"
+
+          archive_path="$RUNNER_TEMP/BanaskuTouchEntry.xcarchive"
+          export_options_path="$RUNNER_TEMP/ExportOptions.plist"
+
+          xcodebuild \
+            -project ios/BanaskuTouchEntry.xcodeproj \
+            -scheme BanaskuTouchEntry \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive_path" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_AUTH_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            archive
+
+          python3 - "$export_options_path" "$APPLE_TEAM_ID" <<'PY'
+          import plistlib
+          import sys
+
+          path, team_id = sys.argv[1:]
+          options = {
+              "destination": "upload",
+              "manageAppVersionAndBuildNumber": False,
+              "method": "app-store-connect",
+              "signingStyle": "automatic",
+              "teamID": team_id,
+              "uploadSymbols": True,
+          }
+          with open(path, "wb") as output:
+              plistlib.dump(options, output)
+          PY
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$archive_path" \
+            -exportPath "$RUNNER_TEMP/TestFlightUpload" \
+            -exportOptionsPlist "$export_options_path" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_AUTH_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_API_ISSUER_ID"
+
+      - name: Remove App Store Connect API key
+        if: always()
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        run: |
+          if [[ -n "${APP_STORE_CONNECT_API_KEY_ID:-}" ]]; then
+            rm -f "$RUNNER_TEMP/app-store-connect-private-keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          fi
