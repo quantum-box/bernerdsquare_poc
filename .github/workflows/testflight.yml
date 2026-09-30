@@ -21,6 +21,7 @@ jobs:
     if: github.repository == 'quantum-box/bernerdsquare_poc' && github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 60
+    environment: testflight
     steps:
       - name: Check out source
         uses: actions/checkout@v5

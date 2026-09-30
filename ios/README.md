@@ -68,7 +68,7 @@ The private API key is written to the temporary GitHub runner only for the uploa
 
 #### Signing secrets required by CI
 
-Before the workflow can produce an uploadable build, create an Apple Distribution certificate and an App Store provisioning profile for `jp.quantumbox.banasku.touch-entry-poc`. The provisioning profile must include the app's enabled Wallet capability and use the same Apple Developer team as `APPLE_TEAM_ID`. Export the certificate and its private key together as a password-protected `.p12` file, then add these repository Actions secrets:
+Before the workflow can produce an uploadable build, create a GitHub Actions environment named `testflight` and restrict its deployment branches to `main`. Then create an Apple Distribution certificate and an App Store provisioning profile for `jp.quantumbox.banasku.touch-entry-poc`. The provisioning profile must include the app's enabled Wallet capability and use the same Apple Developer team as `APPLE_TEAM_ID`. Export the certificate and its private key together as a password-protected `.p12` file, then add these environment secrets to `testflight`:
 
 | Secret | Value |
 | --- | --- |
@@ -76,7 +76,7 @@ Before the workflow can produce an uploadable build, create an Apple Distributio
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used to export the `.p12` file |
 | `IOS_APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store provisioning profile (`.mobileprovision`) |
 
-The workflow validates the profile's team, bundle ID, and App Store distribution type. It imports the certificate into a temporary runner keychain, signs and uploads the archive, then removes the key, certificate, profile, and keychain. For example, encode each binary file on macOS with `base64 -i file | tr -d '\n'`; keep the `.p12` private key out of Git and chat. After these three secrets are configured and the workflow change reaches `main`, an iOS change or a manual run on `main` starts the upload. Apple processes the build before it appears in TestFlight.
+The workflow validates the profile's team, bundle ID, App Store distribution type, and Wallet entitlement. It imports the certificate into a temporary runner keychain, signs and uploads the archive, then removes the key, certificate, profile, and keychain. For example, encode each binary file on macOS with `base64 -i file | tr -d '\n'`; keep the `.p12` private key out of Git and chat. After the environment and its three secrets are configured and the workflow change reaches `main`, an iOS change or a manual run on `main` starts the upload. Apple processes the build before it appears in TestFlight.
 
 The App ID's Wallet capability supports the app's standard Wallet pass entitlement. It does not grant NFC & SE or other restricted entitlements. Apple entitlement approval and the gate provider's compatibility confirmation remain separate requirements for real credential issuance.
 
