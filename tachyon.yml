@@ -15,7 +15,6 @@ spec:
       framework: rust_worker
       deploymentTarget: cloudflare_workers
       build:
-        installCommand: rustup target add wasm32-unknown-unknown && set -x && cargo install 'worker-build@=0.8.6' --locked
         command: worker-build --release
         runnerBackend: kubernetes_kata
       readinessProof:
