@@ -21,18 +21,19 @@ jobs:
     if: github.repository == 'quantum-box/bernerdsquare_poc' && github.ref == 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 60
+    environment: testflight
     steps:
       - name: Check out source
         uses: actions/checkout@v5
 
       - name: Install App Store Connect API key
         env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.TESTFLIGHT_APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.TESTFLIGHT_APP_STORE_CONNECT_API_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          : "${APP_STORE_CONNECT_API_KEY_ID:?Missing APP_STORE_CONNECT_API_KEY_ID secret}"
-          : "${APP_STORE_CONNECT_API_PRIVATE_KEY:?Missing APP_STORE_CONNECT_API_PRIVATE_KEY secret}"
+          : "${APP_STORE_CONNECT_API_KEY_ID:?Missing TESTFLIGHT_APP_STORE_CONNECT_API_KEY_ID environment secret}"
+          : "${APP_STORE_CONNECT_API_PRIVATE_KEY:?Missing TESTFLIGHT_APP_STORE_CONNECT_API_PRIVATE_KEY environment secret}"
 
           key_dir="$RUNNER_TEMP/app-store-connect-private-keys"
           mkdir -p "$key_dir"
@@ -44,7 +45,7 @@ jobs:
       - name: Archive and upload to TestFlight
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.TESTFLIGHT_APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: |
           set -euo pipefail
@@ -101,7 +102,7 @@ jobs:
       - name: Remove App Store Connect API key
         if: always()
         env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.TESTFLIGHT_APP_STORE_CONNECT_API_KEY_ID }}
         run: |
           if [[ -n "${APP_STORE_CONNECT_API_KEY_ID:-}" ]]; then
             rm -f "$RUNNER_TEMP/app-store-connect-private-keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
