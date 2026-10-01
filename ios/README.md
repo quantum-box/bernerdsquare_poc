@@ -54,8 +54,8 @@ The Apple and GitHub configuration was started on 2026-09-30:
 
 - Apple Developer App ID `jp.quantumbox.banasku.touch-entry-poc` is registered with the Wallet capability enabled.
 - The App Store Connect app record **Banasku Touch Entry** is registered for iOS with Japanese as its primary language and SKU `banasku-touch-entry-poc`.
-- A Team API Key with the **Developer** role and its private `.p8` key are already configured as repository secrets. The first CI upload attempt could authenticate to App Store Connect but failed during archive export because this role cannot use the team's cloud-managed distribution certificate.
-- The GitHub Actions environment `testflight` is configured to allow deployments from `main` only. The workflow now uses automatic Xcode signing and reads a dedicated API key from this environment. The existing Developer-role repository key is no longer used by this workflow.
+- A Team API Key with the **Developer** role and its private `.p8` key are configured as repository secrets. The first CI upload attempt could authenticate to App Store Connect but failed during archive export because this role cannot use the team's cloud-managed distribution certificate.
+- A dedicated Admin-role Team API key is now configured as the `testflight` environment secrets below. The GitHub Actions environment allows deployments from `main` only, and the workflow uses automatic Xcode signing. The existing Developer-role repository key is not used by this workflow.
 - These repository secrets are configured in `quantum-box/bernerdsquare_poc` and remain shared with the workflow:
 
    | Secret | Value |
@@ -65,9 +65,9 @@ The Apple and GitHub configuration was started on 2026-09-30:
 
 No certificate, profile, or API key is committed to the repository.
 
-#### TestFlight environment secrets required by CI
+#### TestFlight environment secrets
 
-The workflow uses Xcode cloud-managed signing, so the API key needs permission to manage the team's distribution certificates and provisioning profiles. A dedicated Team API key with the **Admin** role is required for this setup. App Store Connect Admin access applies across the team's apps; the `testflight` environment and its `main`-only deployment rule limit where this workflow can use the key, but do not narrow the key's Apple-side permissions. Create and store this key only after approving that access scope, then add these environment secrets to `testflight`:
+The workflow uses Xcode cloud-managed signing, so the API key needs permission to manage the team's distribution certificates and provisioning profiles. The dedicated Team API key has the **Admin** role. App Store Connect Admin access applies across the team's apps; the `testflight` environment and its `main`-only deployment rule limit where this workflow can use the key, but do not narrow the key's Apple-side permissions. The key is stored only as these GitHub Actions environment secrets:
 
 | Secret | Value |
 | --- | --- |
