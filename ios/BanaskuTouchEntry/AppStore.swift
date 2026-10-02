@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class AppStore: ObservableObject {
-    @Published var mode: ServiceMode = .mock {
+    @Published var mode: ServiceMode = .api {
         didSet {
             guard !isRestoringSnapshot, mode != oldValue else { return }
             guard !isBusy && !isExporting else {
@@ -18,25 +18,6 @@ final class AppStore: ObservableObject {
             bearerTokenDraft = ""
             simulateRegistrationFailure = false
             mock.restoreState(credentials: [], reservations: [], registrations: [])
-            persistSnapshot()
-        }
-    }
-    @Published var baseURL = "https://api.example.com" {
-        didSet {
-            guard !isRestoringSnapshot, baseURL != oldValue else { return }
-            guard !isBusy && !isExporting else {
-                isRestoringSnapshot = true
-                baseURL = oldValue
-                isRestoringSnapshot = false
-                alertMessage = "処理中またはエクスポート中は接続先を変更できません。"
-                return
-            }
-            if mode == .api {
-                clearWorkflowState()
-                bearerToken = ""
-                bearerTokenDraft = ""
-                alertMessage = "API接続先が変わったため、前の接続先の状態とログを消去しました。Bearer tokenを再適用してください。"
-            }
             persistSnapshot()
         }
     }
@@ -77,6 +58,7 @@ final class AppStore: ObservableObject {
     private let credentialProviderOverride: CredentialProvider?
     private let snapshotDefaults: UserDefaults
     private static let snapshotKey = "banasku-touch-entry.snapshot.v1"
+    static let apiBaseURL = "https://pr8--banasku-touch-entry-api.txcloud.app"
     static let displayTimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
     private var isRestoringSnapshot = false
 
@@ -93,7 +75,6 @@ final class AppStore: ObservableObject {
         if let snapshot {
             isRestoringSnapshot = true
             mode = ServiceMode(rawValue: snapshot.mode) ?? .mock
-            baseURL = snapshot.baseURL
             member = TestMember.samples.first(where: { $0.id == snapshot.memberID }) ?? TestMember.samples[0]
             gateID = snapshot.gateID
             startsAt = snapshot.startsAt
@@ -131,7 +112,7 @@ final class AppStore: ObservableObject {
     var credentialAvailability: CredentialState { mode == .mock ? mock.availability : .unavailableProvider }
     var canSimulateRegistrationFailure: Bool {
         if mode == .mock { return true }
-        guard let host = URL(string: baseURL)?.host?.lowercased() else { return false }
+        guard let host = URL(string: Self.apiBaseURL)?.host?.lowercased() else { return false }
         return ["localhost", "127.0.0.1"].contains(host)
     }
 
@@ -319,7 +300,7 @@ final class AppStore: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            let identity = try await APIClient(baseURL: baseURL, bearerToken: token, sessionID: sessionID).identity()
+            let identity = try await APIClient(baseURL: Self.apiBaseURL, bearerToken: token, sessionID: sessionID).identity()
             if let apiIdentity, apiIdentity != identity {
                 clearWorkflowState()
                 alertMessage = "tokenの接続先アカウントが以前と異なるため、前の状態とログを消去しました。"
@@ -332,7 +313,7 @@ final class AppStore: ObservableObject {
             bearerTokenDraft = token
             persistSnapshot()
         } catch {
-            alertMessage = (error as? LocalizedError)?.errorDescription ?? "API接続先を確認できませんでした。URLとBearer tokenを確認してください。"
+            alertMessage = (error as? LocalizedError)?.errorDescription ?? "API接続先を確認できませんでした。API設定とBearer tokenを確認してください。"
         }
     }
 
@@ -368,9 +349,9 @@ final class AppStore: ObservableObject {
 
     private var credentialProvider: CredentialProvider {
         if let credentialProviderOverride { return credentialProviderOverride }
-        return mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID)
+        return mode == .mock ? mock : APIClient(baseURL: Self.apiBaseURL, bearerToken: bearerToken, sessionID: sessionID)
     }
-    private var registrationClient: LockRegistrationClient { mode == .mock ? mock : APIClient(baseURL: baseURL, bearerToken: bearerToken, sessionID: sessionID) }
+    private var registrationClient: LockRegistrationClient { mode == .mock ? mock : APIClient(baseURL: Self.apiBaseURL, bearerToken: bearerToken, sessionID: sessionID) }
 
     private func clearWorkflowState() {
         sessionID = UUID().uuidString
@@ -400,7 +381,7 @@ final class AppStore: ObservableObject {
         defer { isBusy = false }
         do { return try await operation() }
         catch {
-            let message = (error as? LocalizedError)?.errorDescription ?? "通信に失敗しました。URL、ネットワーク、API設定を確認してください。"
+            let message = (error as? LocalizedError)?.errorDescription ?? "通信に失敗しました。ネットワークまたはAPI設定を確認してください。"
             record(action, result: "失敗", detail: message)
             alertMessage = message
             return nil
@@ -416,7 +397,6 @@ final class AppStore: ObservableObject {
         let snapshot = AppSnapshot(
             sessionID: sessionID,
             mode: mode.rawValue,
-            baseURL: baseURL,
             memberID: member.id,
             gateID: gateID,
             startsAt: startsAt,
@@ -466,7 +446,6 @@ final class AppStore: ObservableObject {
 private struct AppSnapshot: Codable {
     var sessionID: String
     var mode: String
-    var baseURL: String
     var memberID: String
     var gateID: String
     var startsAt: Date
