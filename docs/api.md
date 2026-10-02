@@ -36,10 +36,10 @@ For a local failure/retry check, create a registration with `simulate_failure: t
 
 ## Local development
 
-1. Install the Rust `wasm32-unknown-unknown` target, `worker-build`, and Wrangler.
+1. Install rustup and Wrangler. [`api/rust-toolchain.toml`](../api/rust-toolchain.toml) pins Rust 1.91.0 and the `wasm32-unknown-unknown` target; install `worker-build` under that toolchain for local builds.
 2. Create `api/.dev.vars` from `.dev.vars.example` and use a fresh local-only token.
 3. From `api/`, run `wrangler d1 migrations apply banasku-touch-entry-local --local --config wrangler.local.toml`, then start `wrangler dev --config wrangler.local.toml`.
-4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. The shared Kata bootstrap adds `wasm32-unknown-unknown` and installs `worker-build` before running `worker-build --release`; no app-specific install command is needed. Rust Worker Kata support was merged in [Tachyon PR #11019](https://github.com/quantum-box/tachyon-apps/pull/11019), but its shared bootstrap currently resolves `worker-build` 0.8.7, which requires Rust 1.91 while the runner uses Rust 1.88. [Tachyon PR #11199](https://github.com/quantum-box/tachyon-apps/pull/11199) pins the shared bootstrap to a compatible version. Rebuild only after that change is merged and deployed. No successful CloudApp build or deployment has been verified. Keep `API_BEARER_TOKENS_JSON` and Wallet signing values in the sandbox/preview Cloud App secret store; never commit their values.
+4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. It uses the generic Worker bootstrap so `build.installCommand` can install the API's pinned Rust 1.91.0 toolchain and `worker-build` 0.8.7 before building; those commands explicitly use the builder's `/usr/local` Rust homes while the Kata runner redirects its Cargo cache. The Rust Worker bootstrap installs its default `worker-build` too early for this pin. Keep `API_BEARER_TOKENS_JSON` in the sandbox/preview Cloud App secret store and outside Git.
 
 The deployed CloudApp uses the same mock adapter as local mode. It never contacts a gate or confirms a physical unlock.
 
