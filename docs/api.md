@@ -36,10 +36,10 @@ For a local failure/retry check, create a registration with `simulate_failure: t
 
 ## Local development
 
-1. Install the Rust `wasm32-unknown-unknown` target, `worker-build` 0.8.6, and Wrangler. The Cloud App Runner currently uses rustc 1.88, so pin the builder version instead of allowing Cargo to select 0.8.7, which requires rustc 1.91.
+1. Install rustup and Wrangler. [`api/rust-toolchain.toml`](../api/rust-toolchain.toml) pins Rust 1.91.0 and the `wasm32-unknown-unknown` target; install `worker-build` under that toolchain for local builds.
 2. Create `api/.dev.vars` from `.dev.vars.example` and use a fresh local-only token.
 3. From `api/`, run `wrangler d1 migrations apply banasku-touch-entry-local --local --config wrangler.local.toml`, then start `wrangler dev --config wrangler.local.toml`.
-4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. Cloud App build logs confirm the Kata Runner starts, but its Rust 1.88 toolchain cannot install the latest `worker-build` 0.8.7; the manifest now pins 0.8.6. No successful Cloud App build or deployment has been verified yet. Keep `API_BEARER_TOKENS_JSON` in the sandbox/preview Cloud App secret store and outside Git.
+4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. Tachyon's Rust Worker bootstrap installs `worker-build` before custom install commands, so the API pins Rust 1.91.0 in its toolchain file; the current `worker-build` 0.8.7 requires at least that version, while the Runner default is 1.88. No successful Cloud App build or deployment has been verified yet. Keep `API_BEARER_TOKENS_JSON` in the sandbox/preview Cloud App secret store and outside Git.
 
 The deployed CloudApp uses the same mock adapter as local mode. It never contacts a gate or confirms a physical unlock.
 
