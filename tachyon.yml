@@ -20,10 +20,10 @@ spec:
       build:
         installCommand: >-
           rustup toolchain install 1.91.0 --profile minimal --target wasm32-unknown-unknown &&
-          CARGO_HOME=/tmp/tachyon-worker-build-cargo cargo +1.91.0 install
+          RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo cargo +1.91.0 install
           --root /tmp/tachyon-build-bin --locked --version 0.8.7 worker-build &&
           ln -sf /tmp/tachyon-build-bin/bin/worker-build /tmp/tachyon-build-bin/worker-build
-        command: worker-build --release
+        command: RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo worker-build --release
         runnerBackend: kubernetes_kata
       readinessProof:
         path: /healthz
