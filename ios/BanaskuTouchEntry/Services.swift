@@ -31,7 +31,7 @@ enum ServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidConfiguration: "API URLを確認してください。HTTPS (localhostを除く) のURLが必要です。"
+        case .invalidConfiguration: "API接続先に問題があります。HTTPS (localhostを除く) のURLが必要です。"
         case .invalidTimeRange: "終了日時は開始日時より後にしてください。"
         case .httpStatus(let code): "APIがHTTP \(code)を返しました。認証情報や設定を確認してください。"
         case .invalidResponse: "APIの応答形式を読み取れませんでした。"

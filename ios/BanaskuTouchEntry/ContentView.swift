@@ -303,7 +303,7 @@ struct ContentView: View {
                     .disabled(!store.canChangeWorkflowContext)
                 Text(store.mode == .mock
                      ? "すべてローカルの模擬データです。モードを切り替えると資格情報・予約・登録・認可結果・ログを消去します。"
-                     : "設定したサーバーへBearer認証で接続します。モードを切り替えると保存済みの資格情報・予約・登録・認可結果・ログと入力中のtokenを消去します。APIが返す資格情報IDは参照情報で、Apple資格情報ではありません。")
+                     : "Sandbox APIへBearer認証で接続します。モードを切り替えると保存済みの資格情報・予約・登録・認可結果・ログと入力中のtokenを消去します。APIが返す資格情報IDは参照情報で、Apple資格情報ではありません。")
                     .font(.footnote).foregroundStyle(.secondary)
                 if store.mode == .api {
                     Button { Task { await store.restoreServerState() } } label: {
@@ -315,13 +315,12 @@ struct ContentView: View {
                 }
             }
             Section("API設定") {
-                TextField("ベースURL", text: $store.baseURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .disabled(!store.canChangeWorkflowContext)
+                LabeledContent("Sandbox API", value: AppStore.apiBaseURL)
                 SecureField("Bearer token（APIモードで必須）", text: $store.bearerTokenDraft).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .disabled(!store.canChangeWorkflowContext)
                 Button("Bearer tokenを適用・認証") { Task { await store.applyBearerToken() } }
                     .disabled(store.mode != .api || store.isBusy || store.isExporting || store.bearerTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("APIモードではtokenを入力して認証するまで操作できません。接続先またはtokenのアカウントが変わると前の状態とログを消去します。同じアカウントなら、アプリ再起動後も保存済みIDを同期できます。tokenはメモリー上だけで使い、端末保存・ログ・エクスポートには含めません。HTTPS必須 (localhost除く)。")
+                Text("APIモードではtokenを入力して認証するまで操作できません。tokenのアカウントが変わると前の状態とログを消去します。同じアカウントなら、アプリ再起動後も保存済みIDを同期できます。tokenはメモリー上だけで使い、端末保存・ログ・エクスポートには含めません。API接続先はアプリに固定されています。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Apple Walletパスの追加テスト") {
