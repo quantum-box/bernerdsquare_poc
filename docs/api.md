@@ -36,10 +36,10 @@ For a local failure/retry check, create a registration with `simulate_failure: t
 
 ## Local development
 
-1. Install the Rust `wasm32-unknown-unknown` target, `worker-build`, and Wrangler.
+1. Install the Rust `wasm32-unknown-unknown` target, `worker-build` 0.8.6, and Wrangler. The Cloud App Runner currently uses rustc 1.88, so pin the builder version instead of allowing Cargo to select 0.8.7, which requires rustc 1.91.
 2. Create `api/.dev.vars` from `.dev.vars.example` and use a fresh local-only token.
 3. From `api/`, run `wrangler d1 migrations apply banasku-touch-entry-local --local --config wrangler.local.toml`, then start `wrangler dev --config wrangler.local.toml`.
-4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. Its install command adds `wasm32-unknown-unknown` and installs `worker-build` in the Kata builder before running `worker-build --release`. The manifest dry-run returned `UNCHANGED`, but that does not prove which provider the server will select. A manual build of `main` was routed to CodeBuild and failed before compilation because its generated buildspec exceeded CodeBuild's 25,600-character limit. Explicit Rust Worker Kata support is under review in [Tachyon PR #11019](https://github.com/quantum-box/tachyon-apps/pull/11019); do not trigger another CloudApp build until that change is merged and deployed. No successful CloudApp build or deployment has been verified. Add `API_BEARER_TOKENS_JSON` to the sandbox/preview Cloud App secret store only after the Kata build path is ready; keep its value outside Git.
+4. The repository-root Tachyon manifest targets the `bernard-square` CloudApp, provisions its D1 binding, and requests `build.runnerBackend: kubernetes_kata` with `deploymentTarget: cloudflare_workers`. Cloud App build logs confirm the Kata Runner starts, but its Rust 1.88 toolchain cannot install the latest `worker-build` 0.8.7; the manifest now pins 0.8.6. No successful Cloud App build or deployment has been verified yet. Keep `API_BEARER_TOKENS_JSON` in the sandbox/preview Cloud App secret store and outside Git.
 
 The deployed CloudApp uses the same mock adapter as local mode. It never contacts a gate or confirms a physical unlock.
 
