@@ -12,9 +12,17 @@ spec:
         name: bernerdsquare_poc
         defaultBranch: main
       rootDirectory: api
-      framework: rust_worker
+      # Use the generic Worker bootstrap so we can install the pinned Rust
+      # toolchain before worker-build; the Rust Worker bootstrap installs
+      # worker-build before custom install commands run.
+      framework: worker
       deploymentTarget: cloudflare_workers
       build:
+        installCommand: >-
+          rustup toolchain install 1.91.0 --profile minimal --target wasm32-unknown-unknown &&
+          CARGO_HOME=/tmp/tachyon-worker-build-cargo cargo +1.91.0 install
+          --root /tmp/tachyon-build-bin --locked --version 0.8.7 worker-build &&
+          ln -sf /tmp/tachyon-build-bin/bin/worker-build /tmp/tachyon-build-bin/worker-build
         command: worker-build --release
         runnerBackend: kubernetes_kata
       readinessProof:
