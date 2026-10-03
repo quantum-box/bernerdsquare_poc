@@ -51,3 +51,23 @@ spec:
           value: J8429VCGMR
         - name: WALLET_ORGANIZATION_NAME
           value: Banasku
+        - name: WALLET_SIGNER_PRIVATE_KEY_PKCS8_B64
+          type: credential
+          target: preview
+          valueFrom:
+            secret: banasku-touch-entry-api/WALLET_SIGNER_PRIVATE_KEY_PKCS8_B64
+        - name: WALLET_SIGNER_CERTIFICATE_DER_B64
+          type: credential
+          target: preview
+          valueFrom:
+            secret: banasku-touch-entry-api/WALLET_SIGNER_CERTIFICATE_DER_B64
+        - name: WALLET_WWDR_CERTIFICATE_DER_B64
+          type: credential
+          target: preview
+          valueFrom:
+            secret: banasku-touch-entry-api/WALLET_WWDR_CERTIFICATE_DER_B64
+        - name: API_BEARER_TOKENS_JSON
+          type: credential
+          target: preview
+          valueFrom:
+            secret: banasku-touch-entry-api/API_BEARER_TOKENS_JSON

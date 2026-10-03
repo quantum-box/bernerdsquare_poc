@@ -58,7 +58,7 @@ final class AppStore: ObservableObject {
     private let credentialProviderOverride: CredentialProvider?
     private let snapshotDefaults: UserDefaults
     private static let snapshotKey = "banasku-touch-entry.snapshot.v1"
-    static let apiBaseURL = "https://pr8--banasku-touch-entry-api.txcloud.app"
+    static let apiBaseURL = "https://pr7--banasku-touch-entry-api.txcloud.app"
     static let displayTimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
     private var isRestoringSnapshot = false
 
